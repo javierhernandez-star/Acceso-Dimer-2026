@@ -27,16 +27,26 @@ import {
   NotificationTriggerRecipient
 } from "../types";
 
+// Load configuration from firebase-applet-config.json with support for environment variables in Vercel
+const metaEnv = (typeof import.meta !== "undefined" ? (import.meta as unknown as { env?: Record<string, string> }).env : undefined) || {};
+const envApiKey = metaEnv.VITE_FIREBASE_API_KEY;
+const envAuthDomain = metaEnv.VITE_FIREBASE_AUTH_DOMAIN;
+const envProjectId = metaEnv.VITE_FIREBASE_PROJECT_ID;
+const envStorageBucket = metaEnv.VITE_FIREBASE_STORAGE_BUCKET;
+const envMessagingSenderId = metaEnv.VITE_FIREBASE_MESSAGING_SENDER_ID;
+const envAppId = metaEnv.VITE_FIREBASE_APP_ID;
+const envDatabaseId = metaEnv.VITE_FIREBASE_DATABASE_ID;
+
 const firebaseConfig = {
-  apiKey: firebaseConfigJson.apiKey,
-  authDomain: firebaseConfigJson.authDomain,
-  projectId: firebaseConfigJson.projectId,
-  storageBucket: firebaseConfigJson.storageBucket,
-  messagingSenderId: firebaseConfigJson.messagingSenderId,
-  appId: firebaseConfigJson.appId,
+  apiKey: envApiKey || firebaseConfigJson.apiKey,
+  authDomain: envAuthDomain || firebaseConfigJson.authDomain,
+  projectId: envProjectId || firebaseConfigJson.projectId,
+  storageBucket: envStorageBucket || firebaseConfigJson.storageBucket,
+  messagingSenderId: envMessagingSenderId || firebaseConfigJson.messagingSenderId,
+  appId: envAppId || firebaseConfigJson.appId,
 };
 
-const databaseId = (firebaseConfigJson as Record<string, string>).firestoreDatabaseId || "(default)";
+const databaseId = envDatabaseId || (firebaseConfigJson as Record<string, string>).firestoreDatabaseId || "(default)";
 
 let app: FirebaseApp;
 if (!getApps().length) {
