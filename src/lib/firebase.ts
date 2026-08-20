@@ -866,27 +866,21 @@ export function subscribeVisitorProfiles(onData: (profiles: VisitorProfile[]) =>
           firestoreList.push({ id: doc.id, ...doc.data() } as VisitorProfile);
         });
 
-        const currentLocal = getLocalProfiles();
-        const map = new Map<string, VisitorProfile>();
-
-        currentLocal.forEach((p) => {
-          if (p && p.id) map.set(p.id, p);
-        });
-
-        firestoreList.forEach((fp) => {
-          if (fp && fp.id) map.set(fp.id, fp);
-        });
-
-        DEFAULT_PROFILES.forEach((dp) => {
-          if (!map.has(dp.id)) {
-            map.set(dp.id, dp);
+        if (firestoreList.length > 0) {
+          const map = new Map<string, VisitorProfile>();
+          firestoreList.forEach((fp) => {
+            if (fp && fp.id) map.set(fp.id, fp);
+          });
+          const merged = Array.from(map.values()).sort(
+            (a, b) => (a.fullName || "").localeCompare(b.fullName || "")
+          );
+          saveLocalProfiles(merged);
+        } else {
+          // If empty in Firestore, populate default profiles
+          for (const profile of DEFAULT_PROFILES) {
+            setDoc(doc(db, "visitor_profiles", profile.id), sanitizeForFirestore(profile), { merge: true }).catch(() => {});
           }
-        });
-
-        const merged = Array.from(map.values()).sort(
-          (a, b) => (a.fullName || "").localeCompare(b.fullName || "")
-        );
-        saveLocalProfiles(merged);
+        }
       },
       (error) => {
         console.warn("Firestore visitor_profiles subscription warning:", error);
@@ -920,7 +914,7 @@ export async function addVisitorProfile(profile: Omit<VisitorProfile, "id" | "cr
   const updatedList = [profileWithId, ...currentList.filter(p => p.id !== profileWithId.id)];
   saveLocalProfiles(updatedList);
 
-  setDoc(newRef, sanitizeForFirestore(profileWithId)).catch(() => {});
+  setDoc(newRef, sanitizeForFirestore(profileWithId), { merge: true }).catch(() => {});
   return newRef.id;
 }
 
@@ -932,7 +926,7 @@ export async function updateVisitorProfile(id: string, updates: Partial<VisitorP
   const updatedList = currentList.map(p => p.id === id ? { ...p, ...mergedUpdates } : p);
   saveLocalProfiles(updatedList);
 
-  updateDoc(doc(db, "visitor_profiles", id), sanitizeForFirestore(mergedUpdates)).catch(() => {});
+  setDoc(doc(db, "visitor_profiles", id), sanitizeForFirestore(mergedUpdates), { merge: true }).catch(() => {});
 }
 
 export async function deleteVisitorProfile(id: string, visitorName: string = "Visitante"): Promise<void> {
@@ -1084,43 +1078,16 @@ export function saveLocalConfig(config: AppConfig): void {
 // Seed initial data if empty or missing any default hosts/visitors
 export async function seedInitialDataIfEmpty() {
   try {
-    // 1. Ensure all default hosts exist in Firestore in background
     for (const host of DEFAULT_HOSTS) {
-      const hostRef = doc(db, "hosts", host.id);
-      getDoc(hostRef).then((snap) => {
-        if (!snap.exists()) {
-          setDoc(hostRef, sanitizeForFirestore(host), { merge: true }).catch(() => {});
-        }
-      }).catch(() => {});
+      setDoc(doc(db, "hosts", host.id), sanitizeForFirestore(host), { merge: true }).catch(() => {});
     }
-
-    // 2. Ensure default visitors exist in Firestore in background
     for (const visitor of DEFAULT_VISITORS) {
-      const visRef = doc(db, "visitors", visitor.id);
-      getDoc(visRef).then((snap) => {
-        if (!snap.exists()) {
-          setDoc(visRef, sanitizeForFirestore(visitor), { merge: true }).catch(() => {});
-        }
-      }).catch(() => {});
+      setDoc(doc(db, "visitors", visitor.id), sanitizeForFirestore(visitor), { merge: true }).catch(() => {});
     }
-
-    // 2.1 Ensure default visitor profiles exist in Firestore in background
     for (const profile of DEFAULT_PROFILES) {
-      const profRef = doc(db, "visitor_profiles", profile.id);
-      getDoc(profRef).then((snap) => {
-        if (!snap.exists()) {
-          setDoc(profRef, sanitizeForFirestore(profile), { merge: true }).catch(() => {});
-        }
-      }).catch(() => {});
+      setDoc(doc(db, "visitor_profiles", profile.id), sanitizeForFirestore(profile), { merge: true }).catch(() => {});
     }
-
-    // 3. Ensure config exists
-    const configRef = doc(db, "app_config", "settings");
-    getDoc(configRef).then((snap) => {
-      if (!snap.exists()) {
-        setDoc(configRef, sanitizeForFirestore(DEFAULT_CONFIG)).catch(() => {});
-      }
-    }).catch(() => {});
+    setDoc(doc(db, "app_config", "settings"), sanitizeForFirestore(DEFAULT_CONFIG), { merge: true }).catch(() => {});
   } catch (err) {
     console.warn("Notice during seedInitialDataIfEmpty:", err);
   }
@@ -1170,35 +1137,24 @@ export function subscribeVisitors(onData: (visitors: Visitor[]) => void): Unsubs
           firestoreList.push({ id: doc.id, ...doc.data() } as Visitor);
         });
 
-        const currentLocal = getLocalVisitors();
-        const map = new Map<string, Visitor>();
-
-        // 1. Put current local cache first
-        currentLocal.forEach((v) => {
-          if (v && v.id) map.set(v.id, v);
-        });
-
-        // 2. Merge Firestore items (updates or additions from cloud)
-        firestoreList.forEach((fv) => {
-          if (fv && fv.id) map.set(fv.id, fv);
-        });
-
-        // 3. Ensure DEFAULT_VISITORS are preserved
-        DEFAULT_VISITORS.forEach((dv) => {
-          if (!map.has(dv.id)) {
-            map.set(dv.id, dv);
+        if (firestoreList.length > 0) {
+          const map = new Map<string, Visitor>();
+          firestoreList.forEach((fv) => {
+            if (fv && fv.id) map.set(fv.id, fv);
+          });
+          const merged = Array.from(map.values()).sort(
+            (a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
+          );
+          saveLocalVisitors(merged);
+        } else {
+          // If empty in cloud, initialize with default visitors
+          for (const visitor of DEFAULT_VISITORS) {
+            setDoc(doc(db, "visitors", visitor.id), sanitizeForFirestore(visitor), { merge: true }).catch(() => {});
           }
-        });
-
-        const merged = Array.from(map.values()).sort(
-          (a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
-        );
-
-        saveLocalVisitors(merged);
+        }
       },
       (error) => {
         console.warn("Firestore Visitors subscription warning:", error);
-        // On error, deliver full local dataset rather than resetting
         onData(getLocalVisitors());
       }
     );
@@ -1232,27 +1188,21 @@ export function subscribeHosts(onData: (hosts: Host[]) => void): Unsubscribe {
           hostsList.push({ id: doc.id, ...doc.data() } as Host);
         });
 
-        const currentLocal = getLocalHosts();
-        const map = new Map<string, Host>();
-
-        currentLocal.forEach((h) => {
-          if (h && h.id) map.set(h.id, h);
-        });
-
-        hostsList.forEach((fh) => {
-          if (fh && fh.id) {
-            map.set(fh.id, fh);
+        if (hostsList.length > 0) {
+          const map = new Map<string, Host>();
+          hostsList.forEach((fh) => {
+            if (fh && fh.id) {
+              map.set(fh.id, fh);
+            }
+          });
+          const merged = Array.from(map.values()).sort((a, b) => (a.fullName || "").localeCompare(b.fullName || ""));
+          saveLocalHosts(merged);
+        } else {
+          // If empty in cloud, initialize with default hosts
+          for (const host of DEFAULT_HOSTS) {
+            setDoc(doc(db, "hosts", host.id), sanitizeForFirestore(host), { merge: true }).catch(() => {});
           }
-        });
-
-        DEFAULT_HOSTS.forEach((dh) => {
-          if (!map.has(dh.id)) {
-            map.set(dh.id, dh);
-          }
-        });
-
-        const merged = Array.from(map.values()).sort((a, b) => a.fullName.localeCompare(b.fullName));
-        saveLocalHosts(merged);
+        }
       },
       (error) => {
         console.warn("Firestore Hosts subscription warning:", error);
@@ -1591,10 +1541,10 @@ export async function updateVisitorStatus(
     ? { ...existingVisitor, ...mergedUpdates }
     : { ...mergedUpdates };
 
-  // 2. Sync to Firestore in background
+  // 2. Sync to Firestore in background with setDoc merge
   const ref = doc(db, "visitors", id);
   const sanitized = sanitizeForFirestore(mergedUpdates);
-  updateDoc(ref, sanitized).catch((err) => {
+  setDoc(ref, sanitized, { merge: true }).catch((err) => {
     console.warn("Firestore updateVisitorStatus background write warning:", err);
   });
 
@@ -1678,10 +1628,10 @@ export async function updateVisitor(
     ? { ...existingVisitor, ...mergedUpdates }
     : { ...mergedUpdates };
 
-  // 2. Sync to Firestore in background
+  // 2. Sync to Firestore in background with setDoc merge
   const ref = doc(db, "visitors", id);
   const sanitized = sanitizeForFirestore(mergedUpdates);
-  updateDoc(ref, sanitized).catch((err) => {
+  setDoc(ref, sanitized, { merge: true }).catch((err) => {
     console.warn("Firestore updateVisitor background write warning:", err);
   });
 
@@ -1849,7 +1799,7 @@ export async function updateHost(id: string, updates: Partial<Host>): Promise<vo
 
   const ref = doc(db, "hosts", id);
   const sanitized = sanitizeForFirestore(updates);
-  updateDoc(ref, sanitized).catch((err) => {
+  setDoc(ref, sanitized, { merge: true }).catch((err) => {
     console.warn("Firestore updateHost background write warning:", err);
   });
 
