@@ -11,6 +11,7 @@ import {
   getDocs,
   query,
   orderBy,
+  limit,
   Firestore,
   Unsubscribe
 } from "firebase/firestore";
@@ -1075,19 +1076,34 @@ export function saveLocalConfig(config: AppConfig): void {
   });
 }
 
-// Seed initial data if empty or missing any default hosts/visitors
+// Seed initial data ONLY if the database is brand new and completely empty
 export async function seedInitialDataIfEmpty() {
   try {
-    for (const host of DEFAULT_HOSTS) {
-      setDoc(doc(db, "hosts", host.id), sanitizeForFirestore(host), { merge: true }).catch(() => {});
+    const hostsSnapshot = await getDocs(query(collection(db, "hosts"), limit(1)));
+    if (hostsSnapshot.empty) {
+      for (const host of DEFAULT_HOSTS) {
+        await setDoc(doc(db, "hosts", host.id), sanitizeForFirestore(host));
+      }
     }
-    for (const visitor of DEFAULT_VISITORS) {
-      setDoc(doc(db, "visitors", visitor.id), sanitizeForFirestore(visitor), { merge: true }).catch(() => {});
+
+    const visitorsSnapshot = await getDocs(query(collection(db, "visitors"), limit(1)));
+    if (visitorsSnapshot.empty) {
+      for (const visitor of DEFAULT_VISITORS) {
+        await setDoc(doc(db, "visitors", visitor.id), sanitizeForFirestore(visitor));
+      }
     }
-    for (const profile of DEFAULT_PROFILES) {
-      setDoc(doc(db, "visitor_profiles", profile.id), sanitizeForFirestore(profile), { merge: true }).catch(() => {});
+
+    const profilesSnapshot = await getDocs(query(collection(db, "visitor_profiles"), limit(1)));
+    if (profilesSnapshot.empty) {
+      for (const profile of DEFAULT_PROFILES) {
+        await setDoc(doc(db, "visitor_profiles", profile.id), sanitizeForFirestore(profile));
+      }
     }
-    setDoc(doc(db, "app_config", "settings"), sanitizeForFirestore(DEFAULT_CONFIG), { merge: true }).catch(() => {});
+
+    const configDoc = await getDoc(doc(db, "app_config", "settings"));
+    if (!configDoc.exists()) {
+      await setDoc(doc(db, "app_config", "settings"), sanitizeForFirestore(DEFAULT_CONFIG));
+    }
   } catch (err) {
     console.warn("Notice during seedInitialDataIfEmpty:", err);
   }
@@ -1779,9 +1795,7 @@ export async function addHost(hostData: Omit<Host, "id">): Promise<string> {
   saveLocalHosts(updatedList);
 
   const sanitized = sanitizeForFirestore(host);
-  setDoc(newRef, sanitized).catch((err) => {
-    console.warn("Firestore addHost background write warning:", err);
-  });
+  await setDoc(newRef, sanitized, { merge: true });
 
   addAuditLog("HOST_CREATE", undefined, undefined, "Administrador", `Creado empleado: ${host.fullName} (${host.department})`).catch(() => {});
   return newRef.id;
@@ -1799,9 +1813,7 @@ export async function updateHost(id: string, updates: Partial<Host>): Promise<vo
 
   const ref = doc(db, "hosts", id);
   const sanitized = sanitizeForFirestore(updates);
-  setDoc(ref, sanitized, { merge: true }).catch((err) => {
-    console.warn("Firestore updateHost background write warning:", err);
-  });
+  await setDoc(ref, sanitized, { merge: true });
 
   addAuditLog("HOST_UPDATE", undefined, undefined, "Administrador", `Actualizado empleado ID ${id}`).catch(() => {});
 }
@@ -1811,9 +1823,7 @@ export async function deleteHost(id: string, name: string): Promise<void> {
   const updatedList = currentList.filter((h) => h.id !== id);
   saveLocalHosts(updatedList);
 
-  deleteDoc(doc(db, "hosts", id)).catch((err) => {
-    console.warn("Firestore deleteHost background write warning:", err);
-  });
+  await deleteDoc(doc(db, "hosts", id));
 
   addAuditLog("HOST_DELETE", undefined, undefined, "Administrador", `Eliminado empleado: ${name}`).catch(() => {});
 }
