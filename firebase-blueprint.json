@@ -1,0 +1,73 @@
+{
+  "entities": {
+    "visitors": {
+      "title": "visitors",
+      "description": "Lista de pre-registros y citas de visitantes",
+      "type": "object",
+      "properties": {
+        "fullName": { "type": "string" },
+        "company": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "idType": { "type": "string" },
+        "idNumber": { "type": "string" },
+        "accessType": { "type": "string" },
+        "hostId": { "type": "string" },
+        "hostName": { "type": "string" },
+        "hostEmail": { "type": "string" },
+        "department": { "type": "string" },
+        "zone": { "type": "string" },
+        "scheduledDateTime": { "type": "string" },
+        "vehiclePlates": { "type": "string" },
+        "healthDeclaration": { "type": "boolean" },
+        "status": { "type": "string" },
+        "rejectionReason": { "type": "string" },
+        "badgeNumber": { "type": "string" },
+        "checkInTime": { "type": "string" },
+        "checkOutTime": { "type": "string" },
+        "qrFolio": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" },
+        "isExpress": { "type": "boolean" }
+      },
+      "required": ["fullName", "email", "accessType", "status", "qrFolio"]
+    },
+    "hosts": {
+      "title": "hosts",
+      "description": "Directorio de empleados anfitriones",
+      "type": "object",
+      "properties": {
+        "fullName": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "department": { "type": "string" },
+        "position": { "type": "string" },
+        "status": { "type": "string" }
+      },
+      "required": ["fullName", "email", "department"]
+    },
+    "audit_logs": {
+      "title": "audit_logs",
+      "description": "Bitácora de auditoría",
+      "type": "object",
+      "properties": {
+        "timestamp": { "type": "string" },
+        "action": { "type": "string" },
+        "visitorId": { "type": "string" },
+        "visitorName": { "type": "string" },
+        "performedBy": { "type": "string" },
+        "details": { "type": "string" }
+      },
+      "required": ["timestamp", "action"]
+    },
+    "app_config": {
+      "title": "app_config",
+      "description": "Configuración global de PINs y parámetros",
+      "type": "object",
+      "properties": {
+        "guardPin": { "type": "string" },
+        "adminPin": { "type": "string" }
+      }
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "name": "Control de Acceso y Pre-registro de Visitantes",
+  "description": "Sistema de control de acceso a planta y oficinas con pre-registro de visitantes, aprobación de anfitriones y sincronización en tiempo real.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
