@@ -1,12 +1,16 @@
 import React, { useState, useEffect } from "react";
-import { Visitor, Host, AccessType, IdType, VisitorProfile } from "../types";
+import { Visitor, Host, AccessType, IdType, VisitorProfile, ComplianceRecord } from "../types";
 import { addVisitor, subscribeHosts, subscribeVisitors, subscribeVisitorProfiles } from "../lib/firebase";
 import { sendNoReplyEmailNotification } from "../lib/notifications";
 import { generateQRFolio, formatSpanishDate, getCleanPublicVisitorUrl } from "../lib/utils";
+import { PROFILE_CATEGORIES, getCategoryInfo, evaluateVisitorValidity } from "../lib/compliance";
+import { sendVisitorVerificationPin, verifyVisitorPin } from "../lib/visitorPinAuth";
 import { DigitalPassModal } from "./DigitalPassModal";
+import { RegulationComplianceModal } from "./RegulationComplianceModal";
 import {
   Building2, User, Mail, Phone, Shield, FileText, Calendar, Car, CheckSquare,
-  Send, CheckCircle2, QrCode, Search, Sparkles, HardHat, Truck, AlertCircle, Clock, XCircle
+  Send, CheckCircle2, QrCode, Search, Sparkles, HardHat, Truck, AlertCircle, Clock, XCircle,
+  KeyRound, ShieldCheck, ArrowRight, ArrowLeft, RefreshCw, Lock, AlertTriangle, ChevronRight, Check
 } from "lucide-react";
 
 interface VisitorPublicFormProps {
@@ -27,6 +31,29 @@ export const VisitorPublicForm: React.FC<VisitorPublicFormProps> = ({ preselecte
   const [searchResult, setSearchResult] = useState<Visitor | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
 
+  // =========================================================================
+  // STEPPING FLOW: 
+  // Step 0: Profile Selection & Requirements Explanation
+  // Step 1: Email Input & PIN Verification (Zero-knowledge for returning visitors)
+  // Step 2: Main Form with Selective Document Requirements & Validity Rules
+  // =========================================================================
+  const [registrationStep, setRegistrationStep] = useState<0 | 1 | 2>(0);
+  const [selectedAccessType, setSelectedAccessType] = useState<AccessType>("Visita General");
+  
+  // Email & PIN Validation Flow
+  const [emailInput, setEmailInput] = useState("");
+  const [isCheckingEmail, setIsCheckingEmail] = useState(false);
+  const [isReturningVisitor, setIsReturningVisitor] = useState(false);
+  const [pinSent, setPinSent] = useState(false);
+  const [pinInput, setPinInput] = useState("");
+  const [pinError, setPinError] = useState<string | null>(null);
+  const [devPinNotification, setDevPinNotification] = useState<string | null>(null);
+  const [matchedProfileData, setMatchedProfileData] = useState<VisitorProfile | Visitor | null>(null);
+
+  // Compliance & Induction Modal
+  const [showComplianceModal, setShowComplianceModal] = useState(false);
+  const [complianceRecord, setComplianceRecord] = useState<ComplianceRecord | null>(null);
+
   // Form State
   const [fullName, setFullName] = useState("");
   const [company, setCompany] = useState("");
@@ -34,7 +61,6 @@ export const VisitorPublicForm: React.FC<VisitorPublicFormProps> = ({ preselecte
   const [phone, setPhone] = useState("");
   const [idType, setIdType] = useState<IdType>("INE");
   const [idNumber, setIdNumber] = useState("");
-  const [accessType, setAccessType] = useState<AccessType>("Visita General");
   const [selectedHostId, setSelectedHostId] = useState(preselectedHostId || "");
   const [department, setDepartment] = useState("Oficinas / Gerencia");
   const [zone, setZone] = useState("Edificio Administrativo - Oficinas");
@@ -43,6 +69,12 @@ export const VisitorPublicForm: React.FC<VisitorPublicFormProps> = ({ preselecte
   // Contratista
   const [workOrderPo, setWorkOrderPo] = useState("");
   const [imssInsuranceNum, setImssInsuranceNum] = useState("");
+  const [imssExpirationDate, setImssExpirationDate] = useState("");
+  const [suaPaymentProof, setSuaPaymentProof] = useState("");
+  const [dc3Certification, setDc3Certification] = useState("");
+  const [antidopingCertificate, setAntidopingCertificate] = useState("");
+  const [workPlanDescription, setWorkPlanDescription] = useState("");
+  const [astPermitFolio, setAstPermitFolio] = useState("");
   const [hasEpp, setHasEpp] = useState(true);
   const [highRiskPermit, setHighRiskPermit] = useState(false);
   const [highRiskType, setHighRiskType] = useState("Trabajos en Alturas");
@@ -52,6 +84,13 @@ export const VisitorPublicForm: React.FC<VisitorPublicFormProps> = ({ preselecte
   const [cargoType, setCargoType] = useState("Insumos de Producción");
   const [trailerPlates, setTrailerPlates] = useState("");
   const [materialsDescription, setMaterialsDescription] = useState("");
+  const [ndaExpirationDate, setNdaExpirationDate] = useState("");
+
+  // Transportista / Logística
+  const [driverLicenseNumber, setDriverLicenseNumber] = useState("");
+  const [insurancePolicyNumber, setInsurancePolicyNumber] = useState("");
+  const [insurancePolicyExpiration, setInsurancePolicyExpiration] = useState("");
+  const [waybillOrRemissionFolio, setWaybillOrRemissionFolio] = useState("");
 
   // Entrevista
   const [jobPositionApplied, setJobPositionApplied] = useState("");
@@ -63,7 +102,7 @@ export const VisitorPublicForm: React.FC<VisitorPublicFormProps> = ({ preselecte
   const [companionCount, setCompanionCount] = useState<number>(0);
   const [companionsList, setCompanionsList] = useState<{ fullName: string; idNumber: string; company: string }[]>([]);
 
-  // Format datetime-local default to tomorrow at 10:00 AM
+  // Schedule default: tomorrow at 10:00 AM
   const defaultDate = new Date();
   defaultDate.setDate(defaultDate.getDate() + 1);
   defaultDate.setHours(10, 0, 0, 0);
@@ -72,6 +111,36 @@ export const VisitorPublicForm: React.FC<VisitorPublicFormProps> = ({ preselecte
   const [scheduledDateTime, setScheduledDateTime] = useState(defaultDateStr);
   const [vehiclePlates, setVehiclePlates] = useState("");
   const [equipmentRegistered, setEquipmentRegistered] = useState("");
+
+  // Health & Safety acceptance
+  const [noSymptoms, setNoSymptoms] = useState(true);
+  const [acceptSecurityPolicy, setAcceptSecurityPolicy] = useState(true);
+
+  // Subscribe to real-time hosts, visitors and profiles
+  useEffect(() => {
+    const unsubHosts = subscribeHosts((data) => {
+      const activeHosts = data.filter((h) => h.status === "ACTIVE");
+      setHosts(activeHosts);
+      if (!selectedHostId && activeHosts.length > 0) {
+        setSelectedHostId(activeHosts[0].id);
+        setDepartment(activeHosts[0].department);
+      }
+    });
+
+    const unsubVisitors = subscribeVisitors((data) => {
+      setAllVisitors(data);
+    });
+
+    const unsubProfiles = subscribeVisitorProfiles((data) => {
+      setAllProfiles(data);
+    });
+
+    return () => {
+      unsubHosts();
+      unsubVisitors();
+      unsubProfiles();
+    };
+  }, []);
 
   // Update companions array size when companionCount changes
   const handleCompanionCountChange = (count: number) => {
@@ -100,213 +169,174 @@ export const VisitorPublicForm: React.FC<VisitorPublicFormProps> = ({ preselecte
     });
   };
 
-  // Health declaration checkboxes
-  const [noSymptoms, setNoSymptoms] = useState(true);
-  const [acceptSecurityPolicy, setAcceptSecurityPolicy] = useState(true);
+  // Step 0: Profile selection
+  const handleSelectProfileCategory = (type: AccessType) => {
+    setSelectedAccessType(type);
+    // Reset any step 1 credentials
+    setEmailInput("");
+    setPinSent(false);
+    setPinInput("");
+    setPinError(null);
+    setMatchedProfileData(null);
+    setRegistrationStep(1);
+  };
 
-  // Auto-fill match & Quick Search for returning visitors
-  const [matchedVisitor, setMatchedVisitor] = useState<Visitor | VisitorProfile | null>(null);
-  const [quickSearchQuery, setQuickSearchQuery] = useState("");
-  const [frequentSearchResults, setFrequentSearchResults] = useState<Array<Visitor | VisitorProfile>>([]);
-  const [autoFillSuccessMessage, setAutoFillSuccessMessage] = useState<string | null>(null);
-
-  // Subscribe to real-time hosts, visitors and profiles
-  useEffect(() => {
-    const unsubHosts = subscribeHosts((data) => {
-      const activeHosts = data.filter((h) => h.status === "ACTIVE");
-      setHosts(activeHosts);
-      if (!selectedHostId && activeHosts.length > 0) {
-        setSelectedHostId(activeHosts[0].id);
-        setDepartment(activeHosts[0].department);
-      }
-    });
-
-    const unsubVisitors = subscribeVisitors((data) => {
-      setAllVisitors(data);
-    });
-
-    const unsubProfiles = subscribeVisitorProfiles((data) => {
-      setAllProfiles(data);
-    });
-
-    return () => {
-      unsubHosts();
-      unsubVisitors();
-      unsubProfiles();
-    };
-  }, []);
-
-  // Handle Quick Search for frequent visitors across both Visitor Profiles and past Visitor appointments
-  const handleQuickSearch = (query: string) => {
-    setQuickSearchQuery(query);
-    setAutoFillSuccessMessage(null);
-    const q = query.trim().toLowerCase();
-    // Safe threshold: require at least 5 characters for prediction
-    if (!q || q.length < 5) {
-      setFrequentSearchResults([]);
+  // Step 1: Handle Email Check for Existing vs New Visitor
+  const handleEmailSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanEmail = emailInput.trim().toLowerCase();
+    if (!cleanEmail || !cleanEmail.includes("@")) {
+      alert("Por favor ingrese un correo electrónico válido.");
       return;
     }
 
-    const cleanQ = q.replace(/[^a-z0-9]/gi, "");
+    setIsCheckingEmail(true);
+    setPinError(null);
+    setDevPinNotification(null);
 
-    const matches: Array<Visitor | VisitorProfile> = [];
+    try {
+      // Find matching existing visitor in profile directory or past visits
+      const foundProfile = allProfiles.find(
+        (p) => p.email && p.email.trim().toLowerCase() === cleanEmail
+      );
+      const foundPastVisitor = !foundProfile
+        ? allVisitors.find((v) => v.email && v.email.trim().toLowerCase() === cleanEmail)
+        : null;
 
-    // Search in persistent visitor profiles first
-    allProfiles.forEach((p) => {
-      const pId = (p.idNumber || "").toLowerCase();
-      const pCleanId = pId.replace(/[^a-z0-9]/gi, "");
-      const pPhone = (p.phone || "").toLowerCase();
-      const pCleanPhone = pPhone.replace(/[^a-z0-9]/gi, "");
-      const pName = (p.fullName || "").toLowerCase();
-      const pCompany = (p.company || "").toLowerCase();
-      const pEmail = (p.email || "").toLowerCase();
+      const existingRecord = foundProfile || foundPastVisitor;
 
-      if (
-        (pId && pId.includes(q)) ||
-        (cleanQ && cleanQ.length >= 5 && pCleanId && pCleanId.includes(cleanQ)) ||
-        (pPhone && pPhone.includes(q)) ||
-        (cleanQ && cleanQ.length >= 6 && pCleanPhone && pCleanPhone.includes(cleanQ)) ||
-        (pName && pName.includes(q)) ||
-        (pCompany && pCompany.includes(q)) ||
-        (pEmail && pEmail.includes(q))
-      ) {
-        matches.push(p);
+      if (existingRecord) {
+        // Visitor EXISTS: Trigger 4-Digit PIN with Zero-Knowledge (no data rendered yet)
+        setIsReturningVisitor(true);
+        const result = await sendVisitorVerificationPin(cleanEmail, existingRecord);
+        setPinSent(true);
+        if (result.pinForDev) {
+          setDevPinNotification(`PIN enviado a ${cleanEmail}: ${result.pinForDev}`);
+        }
+      } else {
+        // Visitor DOES NOT EXIST: Proceed straight to Step 2 with clean form
+        setIsReturningVisitor(false);
+        setEmail(cleanEmail);
+        setFullName("");
+        setCompany("");
+        setPhone("");
+        setIdNumber("");
+        setVehiclePlates("");
+        setMatchedProfileData(null);
+        setRegistrationStep(2);
       }
-    });
-
-    // Also search in past visitor appointments
-    allVisitors.forEach((v) => {
-      const vId = (v.idNumber || "").toLowerCase();
-      const vCleanId = vId.replace(/[^a-z0-9]/gi, "");
-      const vPhone = (v.phone || "").toLowerCase();
-      const vCleanPhone = vPhone.replace(/[^a-z0-9]/gi, "");
-      const vName = (v.fullName || "").toLowerCase();
-      const vCompany = (v.company || "").toLowerCase();
-      const vEmail = (v.email || "").toLowerCase();
-      const vFolio = (v.qrFolio || "").toLowerCase();
-
-      if (
-        (vId && vId.includes(q)) ||
-        (cleanQ && cleanQ.length >= 5 && vCleanId && vCleanId.includes(cleanQ)) ||
-        (vPhone && vPhone.includes(q)) ||
-        (cleanQ && cleanQ.length >= 6 && vCleanPhone && vCleanPhone.includes(cleanQ)) ||
-        (vName && vName.includes(q)) ||
-        (vCompany && vCompany.includes(q)) ||
-        (vEmail && vEmail.includes(q)) ||
-        (vFolio && vFolio.includes(q))
-      ) {
-        matches.push(v);
-      }
-    });
-
-    // Deduplicate by ID number or Email or Full Name
-    const uniqueMap = new Map<string, Visitor | VisitorProfile>();
-    matches.forEach((item) => {
-      const key = ((item.idNumber && item.idNumber !== "S/N" ? item.idNumber : "") || item.email || item.phone || item.fullName).trim().toLowerCase();
-      if (key && !uniqueMap.has(key)) {
-        uniqueMap.set(key, item);
-      }
-    });
-
-    setFrequentSearchResults(Array.from(uniqueMap.values()).slice(0, 6));
+    } catch (err) {
+      console.error("Error during email check:", err);
+      // Fallback to step 2 if offline
+      setEmail(cleanEmail);
+      setRegistrationStep(2);
+    } finally {
+      setIsCheckingEmail(false);
+    }
   };
 
-  // Populate form with all fields from selected visitor record or profile
-  const populateFromVisitor = (v: Visitor | VisitorProfile) => {
+  // Step 1: Validate 4-digit PIN for Returning Visitor
+  const handleVerifyPinSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setPinError(null);
+
+    const result = verifyVisitorPin(emailInput, pinInput);
+    if (!result.valid || !result.visitorData) {
+      setPinError(result.error || "PIN inválido.");
+      return;
+    }
+
+    // PIN SUCCESS: Load only reusable fixed data + evaluate document validities
+    const record = result.visitorData as VisitorProfile | Visitor;
+    setMatchedProfileData(record);
+    populateWithValidityRules(record);
+    setRegistrationStep(2);
+  };
+
+  // Populate form applying the validity rules from the prompt
+  const populateWithValidityRules = (v: VisitorProfile | Visitor) => {
+    // 1. REUSABLE FIXED DATA (Do not ask again)
     setFullName(v.fullName || "");
     setCompany(v.company || "");
-    setEmail(v.email || "");
+    setEmail(v.email || emailInput.trim().toLowerCase());
     setPhone(v.phone || "");
     setIdType(v.idType || "INE");
     setIdNumber(v.idNumber || "");
     if (v.vehiclePlates) setVehiclePlates(v.vehiclePlates);
-    if (v.accessType) setAccessType(v.accessType);
 
-    // If it's a full Visitor instance with specific module details
+    const now = new Date();
+
+    // 2. DOCUMENT VALIDITY CHECKS (Ask only if expired or changed)
+    // Compliance & Regulation Inductions
+    const complianceRec = v.complianceRecord;
+    const inductionExp = v.safetyInductionValidUntil || complianceRec?.fecha_expiracion_induccion;
+    if (inductionExp && new Date(inductionExp) >= now && complianceRec) {
+      setComplianceRecord(complianceRec);
+    } else {
+      setComplianceRecord(null); // Will require reading/signing if expired
+    }
+
+    // Contratista: IMSS validity check (monthly) & STPS DC-3 / Antidoping
     const vis = v as Visitor;
-    if (vis.equipmentRegistered) setEquipmentRegistered(vis.equipmentRegistered);
-
     if (vis.contractorDetails) {
-      if (vis.contractorDetails.workOrderPo) setWorkOrderPo(vis.contractorDetails.workOrderPo);
       if (vis.contractorDetails.imssInsuranceNum) setImssInsuranceNum(vis.contractorDetails.imssInsuranceNum);
+      if (vis.contractorDetails.suaPaymentProof) setSuaPaymentProof(vis.contractorDetails.suaPaymentProof);
+      if (vis.contractorDetails.dc3Certification) setDc3Certification(vis.contractorDetails.dc3Certification);
+      if (vis.contractorDetails.antidopingCertificate) setAntidopingCertificate(vis.contractorDetails.antidopingCertificate);
       if (vis.contractorDetails.hasEpp !== undefined) setHasEpp(vis.contractorDetails.hasEpp);
       if (vis.contractorDetails.highRiskPermit !== undefined) setHighRiskPermit(vis.contractorDetails.highRiskPermit);
       if (vis.contractorDetails.highRiskType) setHighRiskType(vis.contractorDetails.highRiskType);
+      
+      const imssExp = vis.contractorDetails.imssExpirationDate || v.imssExpirationDate;
+      if (imssExp && new Date(imssExp) >= now) {
+        setImssExpirationDate(imssExp);
+      } else {
+        setImssExpirationDate(""); // Expired: must upload/confirm new monthly IMSS
+      }
+    } else if (v.imssNumber) {
+      setImssInsuranceNum(v.imssNumber);
+      if (v.dc3Certification) setDc3Certification(v.dc3Certification);
+      if (v.suaPaymentProof) setSuaPaymentProof(v.suaPaymentProof);
+      if (v.antidopingCertificate) setAntidopingCertificate(v.antidopingCertificate);
     }
 
+    // Proveedor: NDA validity check (annual)
     if (vis.supplierDetails) {
-      if (vis.supplierDetails.invoiceOrWaybill) setInvoiceOrWaybill(vis.supplierDetails.invoiceOrWaybill);
       if (vis.supplierDetails.cargoType) setCargoType(vis.supplierDetails.cargoType);
       if (vis.supplierDetails.trailerPlates) setTrailerPlates(vis.supplierDetails.trailerPlates);
       if (vis.supplierDetails.materialsDescription) setMaterialsDescription(vis.supplierDetails.materialsDescription);
-    }
-
-    if (vis.interviewDetails) {
-      if (vis.interviewDetails.jobPositionApplied) setJobPositionApplied(vis.interviewDetails.jobPositionApplied);
-      if (vis.interviewDetails.recruiterName) setRecruiterName(vis.interviewDetails.recruiterName);
-      if (vis.interviewDetails.vacancyFolio) setVacancyFolio(vis.interviewDetails.vacancyFolio);
-    }
-
-    if (vis.generalDetails) {
-      if (vis.generalDetails.visitReason) setVisitReason(vis.generalDetails.visitReason);
-      if (vis.generalDetails.companionCount !== undefined) setCompanionCount(vis.generalDetails.companionCount);
-    }
-
-    setMatchedVisitor(null);
-    setQuickSearchQuery("");
-    setFrequentSearchResults([]);
-    setAutoFillSuccessMessage(`¡Datos de ${v.fullName} (${v.company}) cargados exitosamente!`);
-  };
-
-  // Match previous visitor or profile by ID, Phone, or Name when typing in form (safe threshold >= 5 or 6 characters)
-  useEffect(() => {
-    const termId = idNumber.trim().toLowerCase();
-    const termPhone = phone.trim().toLowerCase();
-    const termName = fullName.trim().toLowerCase();
-    const cleanTermId = termId.replace(/[^a-z0-9]/gi, "");
-    const cleanTermPhone = termPhone.replace(/[^a-z0-9]/gi, "");
-
-    const hasValidIdTerm = cleanTermId.length >= 5;
-    const hasValidPhoneTerm = cleanTermPhone.length >= 6;
-    const hasValidNameTerm = termName.length >= 6;
-
-    if (hasValidIdTerm || hasValidPhoneTerm || hasValidNameTerm) {
-      // Check profiles first
-      const matchProfile = allProfiles.find((p) => {
-        const pId = (p.idNumber || "").toLowerCase();
-        const pCleanId = pId.replace(/[^a-z0-9]/gi, "");
-        const pPhone = (p.phone || "").toLowerCase();
-        const pCleanPhone = pPhone.replace(/[^a-z0-9]/gi, "");
-
-        if (hasValidIdTerm && pCleanId && (pCleanId === cleanTermId || pCleanId.includes(cleanTermId))) return true;
-        if (hasValidPhoneTerm && pCleanPhone && (pCleanPhone === cleanTermPhone || pCleanPhone.includes(cleanTermPhone))) return true;
-        if (hasValidNameTerm && p.fullName.toLowerCase() === termName) return true;
-        return false;
-      });
-
-      if (matchProfile) {
-        setMatchedVisitor(matchProfile);
-        return;
+      
+      const ndaExp = vis.supplierDetails.ndaExpirationDate || v.ndaExpirationDate;
+      if (ndaExp && new Date(ndaExp) >= now) {
+        setNdaExpirationDate(ndaExp);
+      } else {
+        setNdaExpirationDate(""); // Expired: must re-sign NDA
       }
-
-      // Check all visitors
-      const matchVisitor = allVisitors.find((v) => {
-        const vId = (v.idNumber || "").toLowerCase();
-        const vCleanId = vId.replace(/[^a-z0-9]/gi, "");
-        const vPhone = (v.phone || "").toLowerCase();
-        const vCleanPhone = vPhone.replace(/[^a-z0-9]/gi, "");
-
-        if (hasValidIdTerm && vCleanId && (vCleanId === cleanTermId || vCleanId.includes(cleanTermId))) return true;
-        if (hasValidPhoneTerm && vCleanPhone && (vCleanPhone === cleanTermPhone || vCleanPhone.includes(cleanTermPhone))) return true;
-        if (hasValidNameTerm && v.fullName.toLowerCase() === termName) return true;
-        return false;
-      });
-
-      setMatchedVisitor(matchVisitor || null);
-    } else {
-      setMatchedVisitor(null);
     }
-  }, [idNumber, phone, fullName, allVisitors, allProfiles]);
+
+    // Transportista: Insurance policy check
+    if (vis.logisticsDetails) {
+      if (vis.logisticsDetails.driverLicenseNumber) setDriverLicenseNumber(vis.logisticsDetails.driverLicenseNumber);
+      if (vis.logisticsDetails.trailerPlates) setTrailerPlates(vis.logisticsDetails.trailerPlates);
+      
+      const insExp = vis.logisticsDetails.insurancePolicyExpiration || v.insuranceExpirationDate;
+      if (insExp && new Date(insExp) >= now) {
+        setInsurancePolicyExpiration(insExp);
+        if (vis.logisticsDetails.insurancePolicyNumber) setInsurancePolicyNumber(vis.logisticsDetails.insurancePolicyNumber);
+      } else {
+        setInsurancePolicyExpiration(""); // Expired: must provide new policy
+      }
+    }
+
+    // 3. MANDATORY PER-VISIT FIELDS (Always require fresh)
+    setAstPermitFolio("");
+    setWorkOrderPo("");
+    setInvoiceOrWaybill("");
+    setWaybillOrRemissionFolio("");
+    setVisitReason("");
+    setCompanionCount(0);
+    setCompanionsList([]);
+  };
 
   const handleHostChange = (hostId: string) => {
     setSelectedHostId(hostId);
@@ -316,7 +346,7 @@ export const VisitorPublicForm: React.FC<VisitorPublicFormProps> = ({ preselecte
     }
   };
 
-  // Search visitor appointment by QR Folio, Email, or Phone
+  // Status Lookup handler
   const handleLookupStatus = (e: React.FormEvent) => {
     e.preventDefault();
     const q = searchQuery.trim().toLowerCase();
@@ -338,10 +368,20 @@ export const VisitorPublicForm: React.FC<VisitorPublicFormProps> = ({ preselecte
     setSearchResult(found || null);
   };
 
+  // Submit Final Appointment Registration
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!fullName || !company || !email || !phone || !idNumber) {
       alert("Por favor complete todos los campos obligatorios (*).");
+      return;
+    }
+
+    // If compliance is required and not yet signed or valid
+    const category = getCategoryInfo(selectedAccessType);
+    const hasValidCompliance = complianceRecord && new Date(complianceRecord.fecha_expiracion_induccion) >= new Date();
+
+    if (!hasValidCompliance) {
+      setShowComplianceModal(true);
       return;
     }
 
@@ -360,28 +400,55 @@ export const VisitorPublicForm: React.FC<VisitorPublicFormProps> = ({ preselecte
       const validCompanions = companionsList.filter((c) => c.fullName.trim() !== "");
 
       const typeSpecificData: Partial<Visitor> = {};
-      if (accessType === "Contratista") {
+
+      if (selectedAccessType === "Contratista") {
         typeSpecificData.contractorDetails = {
           workOrderPo: workOrderPo.trim(),
           imssInsuranceNum: imssInsuranceNum.trim(),
+          imssExpirationDate: imssExpirationDate || undefined,
+          suaPaymentProof: suaPaymentProof.trim(),
+          dc3Certification: dc3Certification.trim(),
+          antidopingCertificate: antidopingCertificate.trim(),
+          workPlanDescription: workPlanDescription.trim(),
+          astPermitFolio: astPermitFolio.trim(),
           hasEpp,
           highRiskPermit,
           highRiskType: highRiskPermit ? highRiskType : ""
         };
-      } else if (accessType === "Proveedor") {
+        typeSpecificData.imssNumber = imssInsuranceNum.trim();
+        typeSpecificData.imssExpirationDate = imssExpirationDate || undefined;
+        typeSpecificData.suaPaymentProof = suaPaymentProof.trim();
+        typeSpecificData.dc3Certification = dc3Certification.trim();
+        typeSpecificData.antidopingCertificate = antidopingCertificate.trim();
+        typeSpecificData.workPlanDescription = workPlanDescription.trim();
+      } else if (selectedAccessType === "Proveedor") {
         typeSpecificData.supplierDetails = {
           invoiceOrWaybill: invoiceOrWaybill.trim(),
           cargoType: cargoType.trim(),
           trailerPlates: trailerPlates.trim().toUpperCase(),
-          materialsDescription: materialsDescription.trim()
+          materialsDescription: materialsDescription.trim(),
+          ndaSignedDate: complianceRecord?.fecha_aceptacion,
+          ndaExpirationDate: complianceRecord?.fecha_expiracion_induccion || ndaExpirationDate || undefined
         };
-      } else if (accessType === "Entrevista") {
+        typeSpecificData.ndaSignedDate = complianceRecord?.fecha_aceptacion;
+        typeSpecificData.ndaExpirationDate = complianceRecord?.fecha_expiracion_induccion || ndaExpirationDate || undefined;
+      } else if (selectedAccessType === "Transportista") {
+        typeSpecificData.logisticsDetails = {
+          driverLicenseNumber: driverLicenseNumber.trim() || idNumber.trim(),
+          insurancePolicyNumber: insurancePolicyNumber.trim(),
+          insurancePolicyExpiration: insurancePolicyExpiration || undefined,
+          waybillOrRemissionFolio: waybillOrRemissionFolio.trim(),
+          trailerPlates: trailerPlates.trim().toUpperCase()
+        };
+        typeSpecificData.insurancePolicyNumber = insurancePolicyNumber.trim();
+        typeSpecificData.insuranceExpirationDate = insurancePolicyExpiration || undefined;
+      } else if (selectedAccessType === "Entrevista") {
         typeSpecificData.interviewDetails = {
           jobPositionApplied: jobPositionApplied.trim(),
           recruiterName: recruiterName.trim(),
           vacancyFolio: vacancyFolio.trim()
         };
-      } else if (accessType === "Visita General") {
+      } else if (selectedAccessType === "Visita General") {
         typeSpecificData.generalDetails = {
           visitReason: visitReason.trim(),
           companionCount: Number(companionCount) || 0
@@ -395,7 +462,7 @@ export const VisitorPublicForm: React.FC<VisitorPublicFormProps> = ({ preselecte
         phone: phone.trim(),
         idType,
         idNumber: idNumber.trim(),
-        accessType,
+        accessType: selectedAccessType,
         hostId: selectedHost ? selectedHost.id : "general",
         hostName: selectedHost ? selectedHost.fullName : "Recepción General",
         hostEmail: selectedHost ? selectedHost.email : "contacto@empresa.com",
@@ -405,6 +472,8 @@ export const VisitorPublicForm: React.FC<VisitorPublicFormProps> = ({ preselecte
         vehiclePlates: vehiclePlates.trim() ? vehiclePlates.trim().toUpperCase() : undefined,
         equipmentRegistered: equipmentRegistered.trim(),
         healthDeclaration: noSymptoms && acceptSecurityPolicy,
+        complianceRecord: complianceRecord || undefined,
+        safetyInductionValidUntil: complianceRecord?.fecha_expiracion_induccion,
         status: "PENDING",
         qrFolio: folio,
         createdAt: now,
@@ -418,25 +487,33 @@ export const VisitorPublicForm: React.FC<VisitorPublicFormProps> = ({ preselecte
       const fullVisitor: Visitor = { ...newVisitorData, id: docId };
 
       // Trigger Google No-Reply Email Notification in background (non-blocking)
-      sendNoReplyEmailNotification('SOLICITUD', fullVisitor).catch((err) => {
+      sendNoReplyEmailNotification("SOLICITUD", fullVisitor).catch((err) => {
         console.warn("Background notification notice:", err);
       });
 
       setCreatedVisitor(fullVisitor);
       setShowPassModal(true);
-      
-      // Reset form state for next registration
+
+      // Reset state to Step 0
+      setRegistrationStep(0);
       setFullName("");
       setCompany("");
       setEmail("");
+      setEmailInput("");
       setPhone("");
       setIdNumber("");
       setWorkOrderPo("");
       setImssInsuranceNum("");
+      setImssExpirationDate("");
+      setAstPermitFolio("");
       setInvoiceOrWaybill("");
       setCargoType("");
       setTrailerPlates("");
       setMaterialsDescription("");
+      setDriverLicenseNumber("");
+      setInsurancePolicyNumber("");
+      setInsurancePolicyExpiration("");
+      setWaybillOrRemissionFolio("");
       setJobPositionApplied("");
       setRecruiterName("");
       setVacancyFolio("");
@@ -445,6 +522,8 @@ export const VisitorPublicForm: React.FC<VisitorPublicFormProps> = ({ preselecte
       setCompanionsList([]);
       setVehiclePlates("");
       setEquipmentRegistered("");
+      setComplianceRecord(null);
+      setMatchedProfileData(null);
     } catch (err) {
       console.error("Error saving visitor pre-registration:", err);
       alert("Ocurrió un error al registrar la cita. Por favor intente nuevamente.");
@@ -453,19 +532,22 @@ export const VisitorPublicForm: React.FC<VisitorPublicFormProps> = ({ preselecte
     }
   };
 
+  const currentCategoryInfo = getCategoryInfo(selectedAccessType);
+  const isComplianceActive = !!(complianceRecord && new Date(complianceRecord.fecha_expiracion_induccion) >= new Date());
+
   return (
     <div className="min-h-screen bg-slate-100 py-6 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-2xl mx-auto space-y-6">
+      <div className="max-w-3xl mx-auto space-y-6">
         {/* Banner & Tab Navigator */}
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
           <div className="bg-gradient-to-r from-slate-900 via-blue-900 to-indigo-950 p-6 text-white flex flex-col sm:flex-row items-center justify-between gap-4">
             <div>
               <div className="inline-flex items-center gap-1.5 bg-blue-500/20 text-blue-300 border border-blue-500/30 text-xs px-3 py-1 rounded-full font-semibold mb-2">
-                <Building2 className="w-3.5 h-3.5" /> Control de Acceso Industrial
+                <Building2 className="w-3.5 h-3.5" /> Control de Acceso Industrial & EHS
               </div>
               <h2 className="text-2xl font-extrabold tracking-tight">Portal de Pre-registro de Visitas</h2>
               <p className="text-xs text-slate-300 mt-1 max-w-md">
-                Pre-registre su cita o consulte el estado actual de su Pase Digital con código QR.
+                Seleccione su perfil, valide sus documentos de seguridad y genere su Pase Digital con código QR.
               </p>
             </div>
             <div className="hidden sm:block bg-blue-600/30 p-3 rounded-2xl border border-blue-400/20">
@@ -502,530 +584,982 @@ export const VisitorPublicForm: React.FC<VisitorPublicFormProps> = ({ preselecte
             </button>
           </div>
 
-          {/* TAB 1: FORMULARIO DE REGISTRO */}
+          {/* ========================================================================= */}
+          {/* TAB 1: FORMULARIO DE REGISTRO CON STEPPER COMPLETO (PASO 0, 1 Y 2)        */}
+          {/* ========================================================================= */}
           {activeTab === "register" && (
             <div>
-              {/* Quick Returning Visitor Search Bar */}
-              <div className="bg-gradient-to-r from-blue-50 via-indigo-50 to-slate-50 p-4 border-b border-blue-100 space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-indigo-900 flex items-center gap-1.5">
-                    <Sparkles className="w-4 h-4 text-indigo-600 animate-pulse" />
-                    <span>¿Ya se ha registrado anteriormente en la planta?</span>
+              {/* Stepper Breadcrumb Header */}
+              <div className="bg-slate-50 border-b border-slate-200 px-6 py-3 flex items-center justify-between text-xs font-semibold">
+                <div className="flex items-center space-x-2 text-slate-600">
+                  <span
+                    className={`flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold ${
+                      registrationStep === 0
+                        ? "bg-blue-600 text-white"
+                        : "bg-emerald-600 text-white"
+                    }`}
+                  >
+                    {registrationStep > 0 ? "✓" : "0"}
                   </span>
-                  <span className="text-[10px] bg-indigo-100 text-indigo-800 font-bold px-2 py-0.5 rounded-full">
-                    Auto-llenado Rápido
+                  <span className={registrationStep === 0 ? "text-blue-900 font-bold" : ""}>
+                    Selección de Perfil
+                  </span>
+
+                  <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+
+                  <span
+                    className={`flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold ${
+                      registrationStep === 1
+                        ? "bg-blue-600 text-white"
+                        : registrationStep > 1
+                        ? "bg-emerald-600 text-white"
+                        : "bg-slate-200 text-slate-600"
+                    }`}
+                  >
+                    {registrationStep > 1 ? "✓" : "1"}
+                  </span>
+                  <span className={registrationStep === 1 ? "text-blue-900 font-bold" : ""}>
+                    Verificación
+                  </span>
+
+                  <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+
+                  <span
+                    className={`flex items-center justify-center w-5 h-5 rounded-full text-[10px] font-bold ${
+                      registrationStep === 2
+                        ? "bg-blue-600 text-white"
+                        : "bg-slate-200 text-slate-600"
+                    }`}
+                  >
+                    2
+                  </span>
+                  <span className={registrationStep === 2 ? "text-blue-900 font-bold" : ""}>
+                    Datos y Requisitos
                   </span>
                 </div>
-                
-                <div className="relative">
-                  <input
-                    type="text"
-                    placeholder="Buscar por ID / INE, Teléfono, Correo, Folio o Nombre..."
-                    value={quickSearchQuery}
-                    onChange={(e) => handleQuickSearch(e.target.value)}
-                    className="w-full pl-9 pr-4 py-2 bg-white border border-indigo-200 rounded-xl text-xs font-medium text-slate-900 focus:ring-2 focus:ring-indigo-600 outline-none shadow-xs"
-                  />
-                  <Search className="w-4 h-4 text-indigo-400 absolute left-3 top-2.5" />
-                </div>
 
-                {/* Quick Search Results Dropdown */}
-                {frequentSearchResults.length > 0 && (
-                  <div className="bg-white border border-indigo-200 rounded-xl shadow-lg p-2 space-y-1.5">
-                    <p className="text-[10px] font-bold text-slate-400 px-2 uppercase tracking-wider">
-                      Visitantes Registrados Encontrados ({frequentSearchResults.length}):
-                    </p>
-                    {frequentSearchResults.map((fv) => (
-                      <div
-                        key={fv.id}
-                        className="flex items-center justify-between p-2.5 hover:bg-indigo-50/70 rounded-lg transition-colors border border-slate-100"
-                      >
-                        <div className="text-xs space-y-0.5">
-                          <p className="font-bold text-slate-900">{fv.fullName} <span className="font-semibold text-slate-500">({fv.company})</span></p>
-                          <p className="text-[11px] text-slate-500">
-                            ID/INE: <span className="font-mono text-slate-700 font-bold">{fv.idNumber}</span> • Tel: {fv.phone} • Email: {fv.email}
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => populateFromVisitor(fv)}
-                          className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-3 py-1.5 rounded-lg shadow-sm whitespace-nowrap"
-                        >
-                          ⚡ Cargar Datos
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {autoFillSuccessMessage && (
-                  <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold p-2.5 rounded-xl flex items-center justify-between">
-                    <span>{autoFillSuccessMessage}</span>
-                    <button
-                      type="button"
-                      onClick={() => setAutoFillSuccessMessage(null)}
-                      className="text-emerald-600 hover:text-emerald-900 text-xs font-black"
-                    >
-                      ✕
-                    </button>
-                  </div>
+                {registrationStep > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setRegistrationStep(0)}
+                    className="text-[11px] text-blue-600 hover:text-blue-800 font-bold flex items-center gap-1"
+                  >
+                    <ArrowLeft className="w-3 h-3" /> Cambiar Perfil
+                  </button>
                 )}
               </div>
 
-              {matchedVisitor && !autoFillSuccessMessage && (
-                <div className="bg-blue-50 border-b border-blue-200 p-4 flex items-center justify-between gap-3">
-                  <div className="flex items-center space-x-2 text-xs text-blue-900">
-                    <Sparkles className="w-4 h-4 text-blue-600 shrink-0 animate-pulse" />
-                    <span>
-                      <strong>Coincidencia por ID/Teléfono:</strong> {matchedVisitor.fullName} ({matchedVisitor.company})
-                    </span>
+              {/* --------------------------------------------------------------------- */}
+              {/* PASO 0: SELECCIÓN DE PERFIL Y EXPLICACIÓN PREVIA                      */}
+              {/* --------------------------------------------------------------------- */}
+              {registrationStep === 0 && (
+                <div className="p-6 sm:p-8 space-y-6">
+                  <div>
+                    <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+                      <ShieldCheck className="w-5 h-5 text-blue-600" />
+                      <span>Seleccione su Perfil de Visitante</span>
+                    </h3>
+                    <p className="text-xs text-slate-500 mt-1">
+                      Para garantizar la seguridad de la planta, cada perfil cuenta con requisitos y lineamientos documentales específicos.
+                    </p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => populateFromVisitor(matchedVisitor)}
-                    className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-3 py-1.5 rounded-lg shadow-sm whitespace-nowrap"
-                  >
-                    ⚡ Cargar Mis Datos
-                  </button>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {PROFILE_CATEGORIES.map((cat) => {
+                      const isSelected = selectedAccessType === cat.id;
+                      return (
+                        <div
+                          key={cat.id}
+                          onClick={() => handleSelectProfileCategory(cat.id)}
+                          className={`cursor-pointer rounded-2xl p-5 border-2 transition-all flex flex-col justify-between group hover:shadow-md ${
+                            isSelected
+                              ? "border-blue-600 bg-blue-50/50 shadow-sm"
+                              : "border-slate-200 hover:border-blue-300 bg-white"
+                          }`}
+                        >
+                          <div>
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 group-hover:bg-blue-100 group-hover:text-blue-800">
+                                {cat.badge}
+                              </span>
+                              <div
+                                className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${
+                                  isSelected
+                                    ? "border-blue-600 bg-blue-600 text-white"
+                                    : "border-slate-300 group-hover:border-blue-400"
+                                }`}
+                              >
+                                {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
+                              </div>
+                            </div>
+
+                            <h4 className="text-sm font-extrabold text-slate-900 group-hover:text-blue-900">
+                              {cat.title}
+                            </h4>
+                            <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                              {cat.description}
+                            </p>
+
+                            <div className="mt-3 pt-3 border-t border-slate-100 space-y-1">
+                              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                                Documentos / Requisitos Solicitados:
+                              </p>
+                              {cat.documentationRequirements.map((req, idx) => (
+                                <p key={idx} className="text-[11px] text-slate-700 flex items-start gap-1.5">
+                                  <span className="text-blue-600 font-bold">•</span>
+                                  <span>{req}</span>
+                                </p>
+                              ))}
+                            </div>
+                          </div>
+
+                          <div className="mt-4 pt-3 flex items-center justify-between text-xs font-bold text-blue-600 group-hover:translate-x-1 transition-transform">
+                            <span>Continuar con este Perfil</span>
+                            <ArrowRight className="w-4 h-4" />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
 
-              <form onSubmit={handleSubmit} className="p-6 sm:p-8 space-y-6">
-                {/* 1. Datos del Visitante */}
-                <div className="space-y-4">
-                  <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2 border-b border-slate-100 pb-2">
-                    <User className="w-4 h-4 text-blue-600" /> 1. Datos del Visitante
-                  </h3>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* --------------------------------------------------------------------- */}
+              {/* PASO 1: SOLICITUD DE CORREO & PIN DE AUTOCOMPLETADO (ZERO KNOWLEDGE) */}
+              {/* --------------------------------------------------------------------- */}
+              {registrationStep === 1 && (
+                <div className="p-6 sm:p-8 space-y-6">
+                  {/* Selected profile summary banner */}
+                  <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 flex items-center justify-between">
                     <div>
-                      <label className="block text-xs font-semibold text-slate-700 mb-1">
-                        Nombre Completo *
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        placeholder="Ej. Juan Carlos Pérez"
-                        value={fullName}
-                        onChange={(e) => setFullName(e.target.value)}
-                        className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 focus:ring-2 focus:ring-blue-600 focus:bg-white transition-all outline-none"
-                      />
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-blue-700">
+                        Perfil Seleccionado
+                      </span>
+                      <h4 className="text-sm font-black text-blue-950">{currentCategoryInfo.title}</h4>
+                      <p className="text-xs text-blue-800">{currentCategoryInfo.shortLabel}</p>
                     </div>
-
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-700 mb-1">
-                        Empresa / Procedencia *
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        placeholder="Ej. Mantenimiento Industrial S.A."
-                        value={company}
-                        onChange={(e) => setCompany(e.target.value)}
-                        className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 focus:ring-2 focus:ring-blue-600 focus:bg-white transition-all outline-none"
-                      />
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setRegistrationStep(0)}
+                      className="bg-white hover:bg-blue-100 text-blue-700 text-xs font-bold px-3 py-1.5 rounded-xl border border-blue-200 shadow-xs"
+                    >
+                      Cambiar
+                    </button>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center gap-1">
-                        <Mail className="w-3.5 h-3.5 text-slate-400" /> Correo Electrónico *
-                      </label>
-                      <input
-                        type="email"
-                        required
-                        placeholder="visitante@empresa.com"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 focus:ring-2 focus:ring-blue-600 focus:bg-white transition-all outline-none"
-                      />
-                    </div>
+                  {!pinSent ? (
+                    <form onSubmit={handleEmailSubmit} className="space-y-4 max-w-md mx-auto">
+                      <div className="text-center space-y-1">
+                        <div className="w-12 h-12 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-2">
+                          <Mail className="w-6 h-6" />
+                        </div>
+                        <h3 className="text-base font-extrabold text-slate-900">
+                          Ingrese su Correo Electrónico
+                        </h3>
+                        <p className="text-xs text-slate-500">
+                          Si ya se ha registrado anteriormente, le enviaremos un PIN de 4 dígitos para autocompletar sus datos con cero revelación pública.
+                        </p>
+                      </div>
 
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center gap-1">
-                        <Phone className="w-3.5 h-3.5 text-slate-400" /> Teléfono Móvil *
-                      </label>
-                      <input
-                        type="tel"
-                        required
-                        placeholder="5512345678"
-                        value={phone}
-                        onChange={(e) => setPhone(e.target.value)}
-                        className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 focus:ring-2 focus:ring-blue-600 focus:bg-white transition-all outline-none"
-                      />
-                    </div>
-                  </div>
+                      <div className="space-y-1">
+                        <label className="block text-xs font-bold text-slate-700">
+                          Correo Electrónico *
+                        </label>
+                        <input
+                          type="email"
+                          required
+                          placeholder="visitante@empresa.com"
+                          value={emailInput}
+                          onChange={(e) => setEmailInput(e.target.value)}
+                          className="w-full px-4 py-3 bg-white border border-slate-300 rounded-xl text-xs font-medium text-slate-900 focus:ring-2 focus:ring-blue-600 outline-none shadow-xs"
+                        />
+                      </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-700 mb-1">
-                        Tipo de Identificación *
-                      </label>
-                      <select
-                        value={idType}
-                        onChange={(e) => setIdType(e.target.value as IdType)}
-                        className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 focus:ring-2 focus:ring-blue-600 focus:bg-white transition-all outline-none"
+                      <button
+                        type="submit"
+                        disabled={isCheckingEmail}
+                        className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-xl text-xs flex items-center justify-center gap-2 shadow-sm transition-all disabled:opacity-50"
                       >
-                        <option value="INE">INE / Credencial Electoral</option>
-                        <option value="Licencia">Licencia de Conducir</option>
-                        <option value="Pasaporte">Pasaporte</option>
-                        <option value="Gafete">Gafete Corporativo</option>
-                        <option value="Otro">Otro Documento Oficial</option>
-                      </select>
-                    </div>
+                        {isCheckingEmail ? (
+                          <>
+                            <RefreshCw className="w-4 h-4 animate-spin" />
+                            <span>Verificando usuario...</span>
+                          </>
+                        ) : (
+                          <>
+                            <span>Continuar con mi Registro</span>
+                            <ArrowRight className="w-4 h-4" />
+                          </>
+                        )}
+                      </button>
+                    </form>
+                  ) : (
+                    /* PIN INPUT FOR RETURNING VISITOR (ZERO KNOWLEDGE) */
+                    <form onSubmit={handleVerifyPinSubmit} className="space-y-4 max-w-md mx-auto">
+                      <div className="text-center space-y-1">
+                        <div className="w-12 h-12 bg-indigo-100 text-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-2">
+                          <KeyRound className="w-6 h-6 animate-bounce" />
+                        </div>
+                        <span className="text-[10px] bg-indigo-100 text-indigo-800 font-bold px-2.5 py-0.5 rounded-full">
+                          Visitante Registrado Detectado
+                        </span>
+                        <h3 className="text-base font-extrabold text-slate-900 mt-1">
+                          Código de Seguridad de 4 Dígitos
+                        </h3>
+                        <p className="text-xs text-slate-500">
+                          Hemos enviado un código a <strong className="text-slate-800">{emailInput}</strong> para autorizar la descarga de su información previa.
+                        </p>
+                      </div>
 
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-700 mb-1">
-                        Número / Folio de Identificación *
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        placeholder="Ej. ID-998811"
-                        value={idNumber}
-                        onChange={(e) => setIdNumber(e.target.value)}
-                        className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 focus:ring-2 focus:ring-blue-600 focus:bg-white transition-all outline-none"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* 2. Tipo de Visitante & Requisitos */}
-                <div className="space-y-4 pt-2">
-                  <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2 border-b border-slate-100 pb-2">
-                    <Building2 className="w-4 h-4 text-indigo-600" /> 2. Clasificación de Visitante
-                  </h3>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-2">Seleccione Tipo de Cita *</label>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                      {[
-                        { id: "Visita General", label: "General", icon: User },
-                        { id: "Contratista", label: "Contratista", icon: HardHat },
-                        { id: "Proveedor", label: "Proveedor", icon: Truck },
-                        { id: "Entrevista", label: "Entrevista", icon: FileText }
-                      ].map((item) => {
-                        const IconComponent = item.icon;
-                        const selected = accessType === item.id;
-                        return (
+                      {devPinNotification && (
+                        <div className="bg-amber-50 border border-amber-200 text-amber-900 text-xs p-3 rounded-xl flex items-center justify-between">
+                          <span className="font-mono font-bold">{devPinNotification}</span>
                           <button
                             type="button"
-                            key={item.id}
-                            onClick={() => setAccessType(item.id as AccessType)}
-                            className={`flex flex-col items-center justify-center p-3 rounded-xl border text-xs font-bold transition-all gap-1 ${
-                              selected
-                                ? "bg-blue-600 text-white border-blue-600 shadow-xs"
-                                : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
-                            }`}
+                            onClick={() => {
+                              const pinMatch = devPinNotification.match(/\b\d{4}\b/);
+                              if (pinMatch) setPinInput(pinMatch[0]);
+                            }}
+                            className="bg-amber-200 hover:bg-amber-300 text-amber-950 text-[10px] font-bold px-2 py-1 rounded-lg"
                           >
-                            <IconComponent className="w-4 h-4" />
-                            <span>{item.label}</span>
+                            Autocompletar PIN
                           </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* Dynamic Fields for CONTRATISTA */}
-                  {accessType === "Contratista" && (
-                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
-                      <p className="text-xs font-bold text-blue-900 flex items-center gap-1.5">
-                        <HardHat className="w-4 h-4 text-blue-600" /> Datos de Seguridad de Contratista
-                      </p>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                        <div>
-                          <label className="block text-slate-700 font-semibold mb-1">Orden de Trabajo / PO</label>
-                          <input
-                            type="text"
-                            placeholder="Ej. OT-2026-88"
-                            value={workOrderPo}
-                            onChange={(e) => setWorkOrderPo(e.target.value)}
-                            className="w-full p-2 bg-white border border-slate-300 rounded-lg text-xs"
-                          />
                         </div>
+                      )}
 
-                        <div>
-                          <label className="block text-slate-700 font-semibold mb-1">Seguro IMSS / Póliza</label>
-                          <input
-                            type="text"
-                            placeholder="Ej. 192837465"
-                            value={imssInsuranceNum}
-                            onChange={(e) => setImssInsuranceNum(e.target.value)}
-                            className="w-full p-2 bg-white border border-slate-300 rounded-lg text-xs"
-                          />
+                      {pinError && (
+                        <div className="bg-rose-50 border border-rose-200 text-rose-800 text-xs p-3 rounded-xl flex items-center gap-2">
+                          <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                          <span>{pinError}</span>
                         </div>
+                      )}
+
+                      <div className="space-y-1">
+                        <label className="block text-xs font-bold text-slate-700 text-center">
+                          Ingrese el PIN de 4 Dígitos
+                        </label>
+                        <input
+                          type="text"
+                          maxLength={4}
+                          required
+                          autoFocus
+                          placeholder="••••"
+                          value={pinInput}
+                          onChange={(e) => setPinInput(e.target.value.replace(/[^0-9]/g, ""))}
+                          className="w-full text-center text-2xl tracking-[1em] font-mono py-3 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-600 focus:bg-white outline-none shadow-xs"
+                        />
                       </div>
 
-                      <div className="flex flex-col sm:flex-row gap-4 pt-1 text-xs">
-                        <label className="flex items-center space-x-2 font-semibold text-slate-800">
-                          <input
-                            type="checkbox"
-                            checked={hasEpp}
-                            onChange={(e) => setHasEpp(e.target.checked)}
-                            className="w-4 h-4 text-blue-600 rounded"
-                          />
-                          <span>Cuento con EPP completo (Casco, Botas, Chaleco)</span>
-                        </label>
+                      <div className="space-y-2 pt-2">
+                        <button
+                          type="submit"
+                          disabled={pinInput.length !== 4}
+                          className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-xl text-xs flex items-center justify-center gap-2 shadow-sm transition-all disabled:opacity-50"
+                        >
+                          <Lock className="w-4 h-4" />
+                          <span>Validar PIN y Cargar Mis Datos</span>
+                        </button>
 
-                        <label className="flex items-center space-x-2 font-semibold text-slate-800">
-                          <input
-                            type="checkbox"
-                            checked={highRiskPermit}
-                            onChange={(e) => setHighRiskPermit(e.target.checked)}
-                            className="w-4 h-4 text-blue-600 rounded"
-                          />
-                          <span>Trabajo de Alto Riesgo</span>
-                        </label>
+                        <div className="flex items-center justify-between text-xs pt-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPinSent(false);
+                              setPinInput("");
+                            }}
+                            className="text-slate-500 hover:text-slate-800"
+                          >
+                            Reingresar correo
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              // Skip autofill, fill as blank
+                              setEmail(emailInput);
+                              setRegistrationStep(2);
+                            }}
+                            className="text-blue-600 hover:text-blue-800 font-bold"
+                          >
+                            Llenar formulario en blanco
+                          </button>
+                        </div>
                       </div>
+                    </form>
+                  )}
+                </div>
+              )}
+
+              {/* --------------------------------------------------------------------- */}
+              {/* PASO 2: FORMULARIO PRINCIPAL CON DISCRIMINACIÓN DE VIGENCIAS          */}
+              {/* --------------------------------------------------------------------- */}
+              {registrationStep === 2 && (
+                <div>
+                  {/* Returning Visitor Notice */}
+                  {matchedProfileData && (
+                    <div className="bg-gradient-to-r from-emerald-50 to-teal-50 border-b border-emerald-200 p-4 flex items-center justify-between gap-3">
+                      <div className="flex items-center space-x-2 text-xs text-emerald-950">
+                        <Sparkles className="w-4 h-4 text-emerald-600 shrink-0" />
+                        <span>
+                          <strong>Visitante Validado:</strong> {fullName} ({company}). Datos fijos autocompletados.
+                        </span>
+                      </div>
+                      <span className="text-[10px] bg-emerald-200 text-emerald-900 font-bold px-2 py-0.5 rounded-full">
+                        PIN Verificado ✓
+                      </span>
                     </div>
                   )}
 
-                  {/* Dynamic Fields for PROVEEDOR */}
-                  {accessType === "Proveedor" && (
-                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
-                      <p className="text-xs font-bold text-blue-900 flex items-center gap-1.5">
-                        <Truck className="w-4 h-4 text-blue-600" /> Información de Carga y Facturación
-                      </p>
+                  <form onSubmit={handleSubmit} className="p-6 sm:p-8 space-y-6">
+                    {/* 1. DATOS FIJOS DEL VISITANTE (REUTILIZABLES) */}
+                    <div className="space-y-4">
+                      <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span className="flex items-center gap-2">
+                          <User className="w-4 h-4 text-blue-600" /> 1. Datos del Visitante
+                        </span>
+                        {matchedProfileData && (
+                          <span className="text-[10px] text-slate-400 font-normal">
+                            (Identidad protegida y reutilizada)
+                          </span>
+                        )}
+                      </h3>
 
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
-                          <label className="block text-slate-700 font-semibold mb-1">No. Remisión / Factura</label>
+                          <label className="block text-xs font-semibold text-slate-700 mb-1">
+                            Nombre Completo *
+                          </label>
                           <input
                             type="text"
-                            placeholder="Ej. REM-5521"
-                            value={invoiceOrWaybill}
-                            onChange={(e) => setInvoiceOrWaybill(e.target.value)}
-                            className="w-full p-2 bg-white border border-slate-300 rounded-lg text-xs"
+                            required
+                            placeholder="Ej. Juan Carlos Pérez"
+                            value={fullName}
+                            onChange={(e) => setFullName(e.target.value)}
+                            className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 focus:ring-2 focus:ring-blue-600 focus:bg-white transition-all outline-none"
                           />
                         </div>
 
                         <div>
-                          <label className="block text-slate-700 font-semibold mb-1">Tipo de Carga</label>
+                          <label className="block text-xs font-semibold text-slate-700 mb-1">
+                            Empresa / Procedencia *
+                          </label>
                           <input
                             type="text"
-                            placeholder="Ej. Materia Prima / Empaque"
-                            value={cargoType}
-                            onChange={(e) => setCargoType(e.target.value)}
-                            className="w-full p-2 bg-white border border-slate-300 rounded-lg text-xs"
+                            required
+                            placeholder="Ej. Mantenimiento Industrial S.A."
+                            value={company}
+                            onChange={(e) => setCompany(e.target.value)}
+                            className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 focus:ring-2 focus:ring-blue-600 focus:bg-white transition-all outline-none"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center gap-1">
+                            <Mail className="w-3.5 h-3.5 text-slate-400" /> Correo Electrónico *
+                          </label>
+                          <input
+                            type="email"
+                            required
+                            readOnly={!!emailInput}
+                            placeholder="visitante@empresa.com"
+                            value={email || emailInput}
+                            onChange={(e) => setEmail(e.target.value)}
+                            className={`w-full px-3.5 py-2.5 border rounded-xl text-xs transition-all outline-none ${
+                              emailInput
+                                ? "bg-slate-100 border-slate-300 text-slate-700 cursor-not-allowed"
+                                : "bg-slate-50 border-slate-300 text-slate-900 focus:ring-2 focus:ring-blue-600 focus:bg-white"
+                            }`}
                           />
                         </div>
 
                         <div>
-                          <label className="block text-slate-700 font-semibold mb-1">Placas de Caja / Remolque</label>
+                          <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center gap-1">
+                            <Phone className="w-3.5 h-3.5 text-slate-400" /> Teléfono Móvil *
+                          </label>
+                          <input
+                            type="tel"
+                            required
+                            placeholder="5512345678"
+                            value={phone}
+                            onChange={(e) => setPhone(e.target.value)}
+                            className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 focus:ring-2 focus:ring-blue-600 focus:bg-white transition-all outline-none"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-700 mb-1">
+                            Tipo de Identificación *
+                          </label>
+                          <select
+                            value={idType}
+                            onChange={(e) => setIdType(e.target.value as IdType)}
+                            className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 focus:ring-2 focus:ring-blue-600 focus:bg-white transition-all outline-none"
+                          >
+                            <option value="INE">INE / Credencial Electoral</option>
+                            <option value="Licencia">Licencia de Conducir</option>
+                            <option value="Pasaporte">Pasaporte</option>
+                            <option value="Gafete">Gafete Corporativo</option>
+                            <option value="Otro">Otro Documento Oficial</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-700 mb-1">
+                            Número / Folio de Identificación *
+                          </label>
                           <input
                             type="text"
-                            placeholder="Ej. 88-XX-12"
-                            value={trailerPlates}
-                            onChange={(e) => setTrailerPlates(e.target.value)}
-                            className="w-full p-2 bg-white border border-slate-300 rounded-lg text-xs"
+                            required
+                            placeholder="Ej. ID-998811"
+                            value={idNumber}
+                            onChange={(e) => setIdNumber(e.target.value)}
+                            className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 focus:ring-2 focus:ring-blue-600 focus:bg-white transition-all outline-none"
                           />
                         </div>
                       </div>
                     </div>
-                  )}
 
-                  {/* Dynamic Fields for VISITA GENERAL */}
-                  {accessType === "Visita General" && (
-                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-4">
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-                        <div>
-                          <label className="block text-slate-700 font-semibold mb-1">Motivo Específico de la Visita</label>
-                          <input
-                            type="text"
-                            placeholder="Ej. Reunión Comercial / Auditoría"
-                            value={visitReason}
-                            onChange={(e) => setVisitReason(e.target.value)}
-                            className="w-full p-2 bg-white border border-slate-300 rounded-lg text-xs"
-                          />
-                        </div>
+                    {/* 2. REQUISITOS ESPECÍFICOS POR PERFIL Y CONTROL DE VIGENCIAS */}
+                    <div className="space-y-4 pt-2">
+                      <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center justify-between border-b border-slate-100 pb-2">
+                        <span className="flex items-center gap-2">
+                          <Shield className="w-4 h-4 text-indigo-600" /> 2. Requisitos de Perfil: {currentCategoryInfo.title}
+                        </span>
+                        <span className="text-[10px] bg-blue-100 text-blue-800 font-bold px-2 py-0.5 rounded-full">
+                          {currentCategoryInfo.badge}
+                        </span>
+                      </h3>
 
-                        <div>
-                          <label className="block text-slate-700 font-semibold mb-1">Número de Acompañantes</label>
-                          <input
-                            type="number"
-                            min={0}
-                            max={20}
-                            value={companionCount}
-                            onChange={(e) => handleCompanionCountChange(Number(e.target.value))}
-                            className="w-full p-2 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-900"
-                          />
-                        </div>
-                      </div>
-
-                      {/* Companion List Structured Inputs */}
-                      {companionCount > 0 && (
-                        <div className="space-y-3 pt-2 border-t border-slate-200">
-                          <p className="text-xs font-bold text-indigo-900 flex items-center justify-between">
-                            <span>👥 Registro de Acompañantes ({companionsList.length}):</span>
-                            <span className="text-[10px] text-slate-500 font-normal">Complete el nombre e identificación de cada uno</span>
+                      {/* CONTRATISTA / MANTENIMIENTO */}
+                      {selectedAccessType === "Contratista" && (
+                        <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-4">
+                          <p className="text-xs font-bold text-blue-900 flex items-center gap-1.5">
+                            <HardHat className="w-4 h-4 text-blue-600" /> Seguridad Industrial & IMSS Mensual
                           </p>
 
-                          <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-                            {companionsList.map((comp, idx) => (
-                              <div key={idx} className="p-3 bg-white border border-slate-200 rounded-xl space-y-2 shadow-2xs">
-                                <span className="text-[10px] font-extrabold text-indigo-700 uppercase tracking-wider block">
-                                  Acompañante #{idx + 1}
-                                </span>
-                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
-                                  <input
-                                    type="text"
-                                    placeholder="Nombre completo *"
-                                    value={comp.fullName}
-                                    onChange={(e) => handleCompanionFieldChange(idx, "fullName", e.target.value)}
-                                    className="p-1.5 bg-slate-50 border border-slate-300 rounded-lg font-medium text-slate-900"
-                                  />
-                                  <input
-                                    type="text"
-                                    placeholder="No. Identificación / INE"
-                                    value={comp.idNumber}
-                                    onChange={(e) => handleCompanionFieldChange(idx, "idNumber", e.target.value)}
-                                    className="p-1.5 bg-slate-50 border border-slate-300 rounded-lg font-mono"
-                                  />
-                                  <input
-                                    type="text"
-                                    placeholder="Empresa (Si difiere)"
-                                    value={comp.company}
-                                    onChange={(e) => handleCompanionFieldChange(idx, "company", e.target.value)}
-                                    className="p-1.5 bg-slate-50 border border-slate-300 rounded-lg"
-                                  />
-                                </div>
-                              </div>
-                            ))}
+                          {/* IMSS (Vigencia Mensual) */}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                            <div>
+                              <label className="block text-slate-700 font-semibold mb-1">
+                                Número de Seguro Social IMSS *
+                              </label>
+                              <input
+                                type="text"
+                                required
+                                placeholder="Ej. 192837465"
+                                value={imssInsuranceNum}
+                                onChange={(e) => setImssInsuranceNum(e.target.value)}
+                                className="w-full p-2.5 bg-white border border-slate-300 rounded-xl text-xs font-mono"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-slate-700 font-semibold mb-1 flex items-center justify-between">
+                                <span>Vigencia de Alta / Pago IMSS *</span>
+                                {imssExpirationDate && new Date(imssExpirationDate) >= new Date() ? (
+                                  <span className="text-[10px] text-emerald-600 font-bold">Vigente ✓</span>
+                                ) : (
+                                  <span className="text-[10px] text-amber-600 font-bold">Exigir Nuevo Mes</span>
+                                )}
+                              </label>
+                              <input
+                                type="date"
+                                required
+                                value={imssExpirationDate}
+                                onChange={(e) => setImssExpirationDate(e.target.value)}
+                                className="w-full p-2.5 bg-white border border-slate-300 rounded-xl text-xs"
+                              />
+                            </div>
+                          </div>
+
+                          {/* AST / Permiso Obligatorio por CITA */}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs pt-1">
+                            <div>
+                              <label className="block text-slate-700 font-semibold mb-1">
+                                Folio AST / Permiso de Trabajo de Alto Riesgo *
+                              </label>
+                              <input
+                                type="text"
+                                required
+                                placeholder="Ej. AST-2026-ALTURAS-01"
+                                value={astPermitFolio}
+                                onChange={(e) => setAstPermitFolio(e.target.value)}
+                                className="w-full p-2.5 bg-white border border-slate-300 rounded-xl text-xs font-mono"
+                              />
+                              <span className="text-[10px] text-slate-400 block mt-0.5">
+                                Obligatorio por cada cita / trabajo en sitio
+                              </span>
+                            </div>
+
+                            <div>
+                              <label className="block text-slate-700 font-semibold mb-1">
+                                Orden de Trabajo / PO
+                              </label>
+                              <input
+                                type="text"
+                                placeholder="Ej. OT-2026-88"
+                                value={workOrderPo}
+                                onChange={(e) => setWorkOrderPo(e.target.value)}
+                                className="w-full p-2.5 bg-white border border-slate-300 rounded-xl text-xs"
+                              />
+                            </div>
+                          </div>
+
+                          {/* Cumplimiento Normativo STPS / IMSS Adicional */}
+                          <div className="pt-2 border-t border-slate-200 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                            <div>
+                              <label className="block text-slate-700 font-semibold mb-1">
+                                Comprobante Pago IMSS / Folio SUA
+                              </label>
+                              <input
+                                type="text"
+                                placeholder="Ej. SUA-EMIS-2026-08 / Folio Bancario"
+                                value={suaPaymentProof}
+                                onChange={(e) => setSuaPaymentProof(e.target.value)}
+                                className="w-full p-2.5 bg-white border border-slate-300 rounded-xl text-xs font-mono"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-slate-700 font-semibold mb-1">
+                                Constancia Habilidades DC-3 (STPS)
+                              </label>
+                              <input
+                                type="text"
+                                placeholder="Ej. DC3-ALTURAS-2026 / DC3-SOLDADURA"
+                                value={dc3Certification}
+                                onChange={(e) => setDc3Certification(e.target.value)}
+                                className="w-full p-2.5 bg-white border border-slate-300 rounded-xl text-xs"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-slate-700 font-semibold mb-1">
+                                Folio Examen Antidoping Vigente
+                              </label>
+                              <input
+                                type="text"
+                                placeholder="Ej. LAB-ANTI-2026-NEG / Folio Laboratorio"
+                                value={antidopingCertificate}
+                                onChange={(e) => setAntidopingCertificate(e.target.value)}
+                                className="w-full p-2.5 bg-white border border-slate-300 rounded-xl text-xs"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-slate-700 font-semibold mb-1">
+                                Plan de Trabajo / Descripción
+                              </label>
+                              <input
+                                type="text"
+                                placeholder="Ej. Reparación tubería línea 2 / Mantenimiento HVAC"
+                                value={workPlanDescription}
+                                onChange={(e) => setWorkPlanDescription(e.target.value)}
+                                className="w-full p-2.5 bg-white border border-slate-300 rounded-xl text-xs"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="flex flex-col sm:flex-row gap-4 pt-1 text-xs">
+                            <label className="flex items-center space-x-2 font-semibold text-slate-800">
+                              <input
+                                type="checkbox"
+                                checked={hasEpp}
+                                onChange={(e) => setHasEpp(e.target.checked)}
+                                className="w-4 h-4 text-blue-600 rounded"
+                              />
+                              <span>Cuento con EPP completo (Casco, Botas NOM, Lentes, Chaleco)</span>
+                            </label>
+
+                            <label className="flex items-center space-x-2 font-semibold text-slate-800">
+                              <input
+                                type="checkbox"
+                                checked={highRiskPermit}
+                                onChange={(e) => setHighRiskPermit(e.target.checked)}
+                                className="w-4 h-4 text-blue-600 rounded"
+                              />
+                              <span>Trabajo de Alto Riesgo</span>
+                            </label>
                           </div>
                         </div>
                       )}
+
+                      {/* PROVEEDOR / COMERCIAL */}
+                      {selectedAccessType === "Proveedor" && (
+                        <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-4">
+                          <p className="text-xs font-bold text-blue-900 flex items-center gap-1.5">
+                            <Truck className="w-4 h-4 text-blue-600" /> Facturación, Carga y Acuerdo NDA
+                          </p>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                            <div>
+                              <label className="block text-slate-700 font-semibold mb-1">
+                                No. Remisión / Factura *
+                              </label>
+                              <input
+                                type="text"
+                                required
+                                placeholder="Ej. REM-5521"
+                                value={invoiceOrWaybill}
+                                onChange={(e) => setInvoiceOrWaybill(e.target.value)}
+                                className="w-full p-2.5 bg-white border border-slate-300 rounded-xl text-xs"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-slate-700 font-semibold mb-1">Tipo de Carga</label>
+                              <input
+                                type="text"
+                                placeholder="Ej. Materia Prima / Empaque"
+                                value={cargoType}
+                                onChange={(e) => setCargoType(e.target.value)}
+                                className="w-full p-2.5 bg-white border border-slate-300 rounded-xl text-xs"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-slate-700 font-semibold mb-1">Placas de Caja / Remolque</label>
+                              <input
+                                type="text"
+                                placeholder="Ej. 88-XX-12"
+                                value={trailerPlates}
+                                onChange={(e) => setTrailerPlates(e.target.value)}
+                                className="w-full p-2.5 bg-white border border-slate-300 rounded-xl text-xs font-mono"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* TRANSPORTISTA / LOGÍSTICA */}
+                      {selectedAccessType === "Transportista" && (
+                        <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-4">
+                          <p className="text-xs font-bold text-blue-900 flex items-center gap-1.5">
+                            <Truck className="w-4 h-4 text-blue-600" /> Logística, Póliza de Seguro y Carta Porte
+                          </p>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                            <div>
+                              <label className="block text-slate-700 font-semibold mb-1">
+                                Licencia de Conducir Transporte *
+                              </label>
+                              <input
+                                type="text"
+                                required
+                                placeholder="Ej. LIC-FED-998811"
+                                value={driverLicenseNumber}
+                                onChange={(e) => setDriverLicenseNumber(e.target.value)}
+                                className="w-full p-2.5 bg-white border border-slate-300 rounded-xl text-xs font-mono"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-slate-700 font-semibold mb-1">
+                                Carta Porte / Folio de Remisión *
+                              </label>
+                              <input
+                                type="text"
+                                required
+                                placeholder="Ej. CP-2026-EMB-88"
+                                value={waybillOrRemissionFolio}
+                                onChange={(e) => setWaybillOrRemissionFolio(e.target.value)}
+                                className="w-full p-2.5 bg-white border border-slate-300 rounded-xl text-xs font-mono"
+                              />
+                              <span className="text-[10px] text-slate-400 block mt-0.5">
+                                Obligatorio por cada embarque / viaje
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                            <div>
+                              <label className="block text-slate-700 font-semibold mb-1">
+                                No. Póliza de Seguro Vehicular *
+                              </label>
+                              <input
+                                type="text"
+                                required
+                                placeholder="Ej. POL-QUALITAS-8899"
+                                value={insurancePolicyNumber}
+                                onChange={(e) => setInsurancePolicyNumber(e.target.value)}
+                                className="w-full p-2.5 bg-white border border-slate-300 rounded-xl text-xs"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-slate-700 font-semibold mb-1 flex items-center justify-between">
+                                <span>Vencimiento de Póliza *</span>
+                                {insurancePolicyExpiration && new Date(insurancePolicyExpiration) >= new Date() ? (
+                                  <span className="text-[10px] text-emerald-600 font-bold">Vigente ✓</span>
+                                ) : (
+                                  <span className="text-[10px] text-amber-600 font-bold">Póliza Actual</span>
+                                )}
+                              </label>
+                              <input
+                                type="date"
+                                required
+                                value={insurancePolicyExpiration}
+                                onChange={(e) => setInsurancePolicyExpiration(e.target.value)}
+                                className="w-full p-2.5 bg-white border border-slate-300 rounded-xl text-xs"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* CANDIDATO / ENTREVISTA */}
+                      {selectedAccessType === "Entrevista" && (
+                        <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
+                          <p className="text-xs font-bold text-blue-900 flex items-center gap-1.5">
+                            <FileText className="w-4 h-4 text-blue-600" /> Proceso de Selección y Reclutamiento
+                          </p>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                            <div>
+                              <label className="block text-slate-700 font-semibold mb-1">Puesto Solicitado *</label>
+                              <input
+                                type="text"
+                                required
+                                placeholder="Ej. Supervisor de Calidad"
+                                value={jobPositionApplied}
+                                onChange={(e) => setJobPositionApplied(e.target.value)}
+                                className="w-full p-2.5 bg-white border border-slate-300 rounded-xl text-xs"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-slate-700 font-semibold mb-1">Nombre de Reclutador / RH</label>
+                              <input
+                                type="text"
+                                placeholder="Ej. Lic. Mariana Gómez"
+                                value={recruiterName}
+                                onChange={(e) => setRecruiterName(e.target.value)}
+                                className="w-full p-2.5 bg-white border border-slate-300 rounded-xl text-xs"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* VISITA GENERAL */}
+                      {selectedAccessType === "Visita General" && (
+                        <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-4">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                            <div>
+                              <label className="block text-slate-700 font-semibold mb-1">Motivo Específico *</label>
+                              <input
+                                type="text"
+                                required
+                                placeholder="Ej. Reunión Comercial / Auditoría"
+                                value={visitReason}
+                                onChange={(e) => setVisitReason(e.target.value)}
+                                className="w-full p-2.5 bg-white border border-slate-300 rounded-xl text-xs"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-slate-700 font-semibold mb-1">Número de Acompañantes</label>
+                              <input
+                                type="number"
+                                min={0}
+                                max={20}
+                                value={companionCount}
+                                onChange={(e) => handleCompanionCountChange(Number(e.target.value))}
+                                className="w-full p-2.5 bg-white border border-slate-300 rounded-xl text-xs font-mono"
+                              />
+                            </div>
+                          </div>
+
+                          {companionCount > 0 && (
+                            <div className="space-y-2 pt-2 border-t border-slate-200">
+                              <p className="text-[11px] font-bold text-slate-700">
+                                Registro de Acompañantes ({companionsList.length}):
+                              </p>
+                              {companionsList.map((comp, idx) => (
+                                <div key={idx} className="grid grid-cols-1 sm:grid-cols-3 gap-2 bg-white p-2.5 rounded-xl border border-slate-200">
+                                  <input
+                                    type="text"
+                                    placeholder={`Nombre Acompañante ${idx + 1}`}
+                                    value={comp.fullName}
+                                    onChange={(e) => handleCompanionFieldChange(idx, "fullName", e.target.value)}
+                                    className="p-2 border border-slate-200 rounded-lg text-xs"
+                                  />
+                                  <input
+                                    type="text"
+                                    placeholder="INE / Pasaporte"
+                                    value={comp.idNumber}
+                                    onChange={(e) => handleCompanionFieldChange(idx, "idNumber", e.target.value)}
+                                    className="p-2 border border-slate-200 rounded-lg text-xs"
+                                  />
+                                  <input
+                                    type="text"
+                                    placeholder="Empresa"
+                                    value={comp.company}
+                                    onChange={(e) => handleCompanionFieldChange(idx, "company", e.target.value)}
+                                    className="p-2 border border-slate-200 rounded-lg text-xs"
+                                  />
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
 
-                {/* 3. Programación y Anfitrión */}
-                <div className="space-y-4 pt-2">
-                  <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2 border-b border-slate-100 pb-2">
-                    <Calendar className="w-4 h-4 text-blue-600" /> 3. Programación y Anfitrión
-                  </h3>
+                    {/* 3. MÓDULO DE REGLAMENTO / EHS COMPLIANCE STATUS */}
+                    <div className="p-4 bg-gradient-to-r from-slate-50 to-blue-50/40 border border-slate-200 rounded-2xl space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <ShieldCheck className="w-4 h-4 text-blue-600" />
+                          <span className="text-xs font-bold text-slate-900">
+                            Reglamento Oficial: {currentCategoryInfo.ruleBookTitle}
+                          </span>
+                        </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-700 mb-1">
-                        Anfitrión / Empleado a Visitar *
+                        {isComplianceActive ? (
+                          <span className="bg-emerald-100 text-emerald-800 border border-emerald-300 text-[10px] font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                            <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Inducción Vigente ✓
+                          </span>
+                        ) : (
+                          <span className="bg-amber-100 text-amber-900 border border-amber-300 text-[10px] font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                            <Clock className="w-3 h-3 text-amber-600" /> Lectura & Firma Requerida
+                          </span>
+                        )}
+                      </div>
+
+                      <p className="text-xs text-slate-600">
+                        {isComplianceActive
+                          ? `Constancia registrada el ${formatSpanishDate(complianceRecord?.fecha_aceptacion || '')}. Documento: ${complianceRecord?.version_doc}. Omisión automática por vigencia activa.`
+                          : `Para ingresar a las instalaciones, es obligatorio leer el documento con scroll completo y registrar su conformidad electrónica.`}
+                      </p>
+
+                      {!isComplianceActive && (
+                        <button
+                          type="button"
+                          onClick={() => setShowComplianceModal(true)}
+                          className="bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs px-4 py-2 rounded-xl shadow-xs transition-colors flex items-center gap-1.5"
+                        >
+                          <FileText className="w-4 h-4" />
+                          <span>Abrir y Firmar Reglamento / Inducción EHS</span>
+                        </button>
+                      )}
+                    </div>
+
+                    {/* 4. ANFITRIÓN Y FECHA PROGRAMADA */}
+                    <div className="space-y-4 pt-2">
+                      <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2 border-b border-slate-100 pb-2">
+                        <Building2 className="w-4 h-4 text-blue-600" /> 3. Anfitrión y Programación
+                      </h3>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-700 mb-1">
+                            Anfitrión / Contacto en Planta *
+                          </label>
+                          <select
+                            value={selectedHostId}
+                            onChange={(e) => handleHostChange(e.target.value)}
+                            className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 focus:ring-2 focus:ring-blue-600 focus:bg-white transition-all outline-none font-medium"
+                          >
+                            {hosts.map((h) => (
+                              <option key={h.id} value={h.id}>
+                                {h.fullName} — {h.department}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center gap-1">
+                            <Calendar className="w-3.5 h-3.5 text-slate-400" /> Fecha y Hora Estimada *
+                          </label>
+                          <input
+                            type="datetime-local"
+                            required
+                            value={scheduledDateTime}
+                            onChange={(e) => setScheduledDateTime(e.target.value)}
+                            className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 focus:ring-2 focus:ring-blue-600 focus:bg-white transition-all outline-none font-mono"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center gap-1">
+                            <Car className="w-3.5 h-3.5 text-slate-400" /> Placas de Vehículo (Opcional)
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="Ej. ABC-123-D"
+                            value={vehiclePlates}
+                            onChange={(e) => setVehiclePlates(e.target.value)}
+                            className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 focus:ring-2 focus:ring-blue-600 focus:bg-white transition-all outline-none font-mono"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-700 mb-1">
+                            Equipo o Herramientas a Ingresar
+                          </label>
+                          <input
+                            type="text"
+                            placeholder="Ej. Laptop Dell S/N 8891, Rotomartillo"
+                            value={equipmentRegistered}
+                            onChange={(e) => setEquipmentRegistered(e.target.value)}
+                            className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 focus:ring-2 focus:ring-blue-600 focus:bg-white transition-all outline-none"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Declaration */}
+                    <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
+                      <label className="flex items-center space-x-2 font-semibold text-slate-800 text-xs">
+                        <input
+                          type="checkbox"
+                          checked={acceptSecurityPolicy}
+                          onChange={(e) => setAcceptSecurityPolicy(e.target.checked)}
+                          className="w-4 h-4 text-blue-600 rounded"
+                        />
+                        <span>
+                          Declaro bajo protesta de decir verdad que los datos proporcionados son fidedignos y me comprometo a respetar las políticas de seguridad.
+                        </span>
                       </label>
-                      <select
-                        value={selectedHostId}
-                        onChange={(e) => handleHostChange(e.target.value)}
-                        className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 focus:ring-2 focus:ring-blue-600 focus:bg-white transition-all outline-none font-medium"
+                    </div>
+
+                    {/* Submit Button */}
+                    <div className="pt-2">
+                      <button
+                        type="submit"
+                        disabled={isSubmitting}
+                        className="w-full bg-gradient-to-r from-blue-700 to-indigo-700 hover:from-blue-800 hover:to-indigo-800 text-white font-bold py-3.5 px-6 rounded-xl shadow-md transition-all flex items-center justify-center space-x-2 text-xs disabled:opacity-50"
                       >
-                        {hosts.map((host) => (
-                          <option key={host.id} value={host.id}>
-                            {host.fullName} — ({host.department})
-                          </option>
-                        ))}
-                      </select>
+                        {isSubmitting ? (
+                          <>
+                            <RefreshCw className="w-4 h-4 animate-spin" />
+                            <span>Registrando cita en Firestore...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Send className="w-4 h-4" />
+                            <span>Generar Pase Digital y Notificar a Anfitrión</span>
+                          </>
+                        )}
+                      </button>
                     </div>
-
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-700 mb-1">
-                        Zona de Destino *
-                      </label>
-                      <select
-                        value={zone}
-                        onChange={(e) => setZone(e.target.value)}
-                        className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 focus:ring-2 focus:ring-blue-600 focus:bg-white transition-all outline-none"
-                      >
-                        <option value="Edificio Administrativo - Oficinas">Edificio Administrativo - Oficinas</option>
-                        <option value="Almacén Central / Recepción">Almacén Central / Recepción</option>
-                        <option value="Nave de Producción Principal">Nave de Producción Principal</option>
-
-                        <option value="Taller de Mantenimiento">Taller de Mantenimiento</option>
-                        <option value="Laboratorio y Control de Calidad">Laboratorio y Control de Calidad</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center gap-1">
-                        <Calendar className="w-3.5 h-3.5 text-slate-400" /> Fecha y Hora Propuesta *
-                      </label>
-                      <input
-                        type="datetime-local"
-                        required
-                        value={scheduledDateTime}
-                        onChange={(e) => setScheduledDateTime(e.target.value)}
-                        className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 focus:ring-2 focus:ring-blue-600 focus:bg-white transition-all outline-none font-medium"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center gap-1">
-                        <Car className="w-3.5 h-3.5 text-slate-400" /> Placas de Vehículo (Opcional)
-                      </label>
-                      <input
-                        type="text"
-                        placeholder="Ej. ABC-123"
-                        value={vehiclePlates}
-                        onChange={(e) => setVehiclePlates(e.target.value)}
-                        className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 focus:ring-2 focus:ring-blue-600 focus:bg-white transition-all outline-none uppercase font-mono"
-                      />
-                    </div>
-                  </div>
+                  </form>
                 </div>
-
-                {/* 4. Declaración de Salud y Seguridad */}
-                <div className="space-y-3 pt-2">
-                  <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2 border-b border-slate-100 pb-2">
-                    <Shield className="w-4 h-4 text-emerald-600" /> 4. Declaración y Protocolo de Seguridad
-                  </h3>
-
-                  <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
-                    <label className="flex items-start space-x-3 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={noSymptoms}
-                        onChange={(e) => setNoSymptoms(e.target.checked)}
-                        className="mt-0.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4"
-                      />
-                      <span className="text-xs text-slate-700">
-                        Declaro no presentar síntomas respiratorios o de contagio.
-                      </span>
-                    </label>
-
-                    <label className="flex items-start space-x-3 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={acceptSecurityPolicy}
-                        onChange={(e) => setAcceptSecurityPolicy(e.target.checked)}
-                        className="mt-0.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 w-4 h-4"
-                      />
-                      <span className="text-xs text-slate-700">
-                        Acepto acatar el protocolo de seguridad industrial de la planta.
-                      </span>
-                    </label>
-                  </div>
-                </div>
-
-                {/* Submit button */}
-                <div className="pt-2">
-                  <button
-                    type="submit"
-                    disabled={isSubmitting}
-                    className="w-full bg-gradient-to-r from-blue-700 to-indigo-700 hover:from-blue-800 hover:to-indigo-800 text-white font-bold py-3.5 px-6 rounded-xl shadow-md transition-all flex items-center justify-center space-x-2 text-xs disabled:opacity-50"
-                  >
-                    {isSubmitting ? (
-                      <span>Registrando cita en Firestore...</span>
-                    ) : (
-                      <>
-                        <Send className="w-4 h-4" />
-                        <span>Generar Pase Digital y Notificar a Anfitrión</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-              </form>
+              )}
             </div>
           )}
 
-          {/* TAB 2: CONSULTAR ESTADO DE MI CITA */}
+          {/* ========================================================================= */}
+          {/* TAB 2: CONSULTAR ESTADO DE MI CITA (BUSCADOR FOLIO / CORREO)               */}
+          {/* ========================================================================= */}
           {activeTab === "lookup" && (
             <div className="p-6 sm:p-8 space-y-6">
               <form onSubmit={handleLookupStatus} className="space-y-4">
@@ -1127,12 +1661,6 @@ export const VisitorPublicForm: React.FC<VisitorPublicFormProps> = ({ preselecte
                         </div>
                       )}
 
-                      {searchResult.status === "CANCELLED" && searchResult.cancellationReason && (
-                        <div className="p-3 bg-slate-100 border border-slate-300 rounded-lg text-xs text-slate-900">
-                          <strong>Motivo de Cancelación:</strong> {searchResult.cancellationReason}
-                        </div>
-                      )}
-
                       {(searchResult.status === "APPROVED" || searchResult.status === "CHECKED_IN") && (
                         <div className="pt-2">
                           <button
@@ -1183,6 +1711,20 @@ export const VisitorPublicForm: React.FC<VisitorPublicFormProps> = ({ preselecte
           </div>
         )}
       </div>
+
+      {/* Regulation Compliance & EHS Scroll Modal */}
+      {showComplianceModal && (
+        <RegulationComplianceModal
+          accessType={selectedAccessType}
+          visitorEmail={email || emailInput}
+          visitorName={fullName}
+          onAccept={(record) => {
+            setComplianceRecord(record);
+            setShowComplianceModal(false);
+          }}
+          onClose={() => setShowComplianceModal(false)}
+        />
+      )}
 
       {/* Digital Pass Modal */}
       {showPassModal && createdVisitor && (

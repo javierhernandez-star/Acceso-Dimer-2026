@@ -7,6 +7,7 @@ import { DigitalPassModal } from "./DigitalPassModal";
 import { VisitorEditModal } from "./VisitorEditModal";
 import { HostCardModal } from "./HostCardModal";
 import { GuardVisitorDetailModal } from "./GuardVisitorDetailModal";
+import { GuardComplianceAlertBanner } from "./GuardComplianceAlertBanner";
 import {
   Shield, KeyRound, Search, QrCode, CheckCircle2, LogOut, UserPlus,
   Clock, AlertCircle, Building2, User, Phone, Check, RefreshCw,
@@ -474,6 +475,9 @@ export const GuardPanel: React.FC<GuardPanelProps> = ({ visitors, hosts, config,
                         <span className="text-slate-300">•</span>
                         <span className="text-slate-500 text-[11px] truncate">{v.accessType || "Visita"}</span>
                       </p>
+
+                      {/* Compact Document / Induction Alerts */}
+                      <GuardComplianceAlertBanner visitor={v} compact />
                     </div>
 
                     {/* Compact Preview Summary */}
@@ -596,6 +600,8 @@ export const GuardPanel: React.FC<GuardPanelProps> = ({ visitors, hosts, config,
                     <span className="flex items-center gap-1 font-bold text-slate-800">
                       <Building2 className="w-3.5 h-3.5 text-slate-400" /> {v.company}
                     </span>
+
+                    <GuardComplianceAlertBanner visitor={v} compact />
 
                     <button
                       type="button"

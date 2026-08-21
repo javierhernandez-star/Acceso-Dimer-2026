@@ -16,7 +16,16 @@ import {
   Mail,
   Loader2,
   Eye,
-  Lock
+  Lock,
+  Building2,
+  QrCode,
+  ShieldCheck,
+  Filter,
+  Car,
+  Clock,
+  Send,
+  UserCheck,
+  FileCheck
 } from "lucide-react";
 
 interface AdminVisitorsTabProps {
@@ -40,6 +49,7 @@ export const AdminVisitorsTab: React.FC<AdminVisitorsTabProps> = ({
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
   const [originFilter, setOriginFilter] = useState<string>("ALL");
+  const [dateFilter, setDateFilter] = useState<"ALL" | "TODAY" | "FUTURE" | "PAST">("ALL");
 
   const [sendingEmailForId, setSendingEmailForId] = useState<string | null>(null);
   const [emailFeedback, setEmailFeedback] = useState<{ id: string; msg: string; isError?: boolean } | null>(null);
@@ -69,7 +79,7 @@ export const AdminVisitorsTab: React.FC<AdminVisitorsTabProps> = ({
       await sendNoReplyEmailNotification(eventType, v);
       setEmailFeedback({
         id: v.id,
-        msg: `¡Notificación enviada a ${v.email || v.hostEmail}!`,
+        msg: `¡Notificación enviada con éxito a ${v.email || v.hostEmail}!`,
         isError: false
       });
       setTimeout(() => setEmailFeedback(null), 4000);
@@ -85,6 +95,8 @@ export const AdminVisitorsTab: React.FC<AdminVisitorsTabProps> = ({
     }
   };
 
+  const todayIso = new Date().toISOString().split("T")[0];
+
   // Filter individual appointments / passes
   const filteredAppointments = visitors.filter((v) => {
     const term = searchTerm.toLowerCase().trim();
@@ -95,7 +107,8 @@ export const AdminVisitorsTab: React.FC<AdminVisitorsTabProps> = ({
       v.hostName.toLowerCase().includes(term) ||
       v.qrFolio.toLowerCase().includes(term) ||
       (v.badgeNumber && v.badgeNumber.toLowerCase().includes(term)) ||
-      (v.vehiclePlates && v.vehiclePlates.toLowerCase().includes(term));
+      (v.vehiclePlates && v.vehiclePlates.toLowerCase().includes(term)) ||
+      (v.department && v.department.toLowerCase().includes(term));
 
     const matchesStatus =
       statusFilter === "ALL" ||
@@ -106,48 +119,85 @@ export const AdminVisitorsTab: React.FC<AdminVisitorsTabProps> = ({
       (originFilter === "EXPRESS" && v.isExpress) ||
       (originFilter === "PREREGISTER" && !v.isExpress);
 
-    return matchesSearch && matchesStatus && matchesOrigin;
+    const schedDate = v.scheduledDateTime ? v.scheduledDateTime.split("T")[0] : "";
+    const matchesDate =
+      dateFilter === "ALL" ||
+      (dateFilter === "TODAY" && schedDate === todayIso) ||
+      (dateFilter === "FUTURE" && schedDate > todayIso) ||
+      (dateFilter === "PAST" && schedDate < todayIso);
+
+    return matchesSearch && matchesStatus && matchesOrigin && matchesDate;
   });
+
+  const totalPending = visitors.filter((v) => v.status === "PENDING").length;
+  const totalInPlant = visitors.filter((v) => v.status === "CHECKED_IN").length;
+  const totalApproved = visitors.filter((v) => v.status === "APPROVED").length;
+  const totalExpress = visitors.filter((v) => v.isExpress).length;
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-6">
-      {/* Top Metrics Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div className="bg-slate-50 border border-slate-200 p-3.5 rounded-2xl space-y-1">
-          <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Total de Citas</p>
-          <p className="text-2xl font-black text-slate-900">{visitors.length}</p>
-          <p className="text-[10px] text-slate-400">Pases y citas registrados</p>
+      {/* Executive KPI Overview Grid */}
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3.5">
+        <div className="bg-slate-900 text-white p-4 rounded-2xl flex flex-col justify-between shadow-sm">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold tracking-wider uppercase text-slate-400">Total Pases</span>
+            <Calendar className="w-4 h-4 text-amber-400" />
+          </div>
+          <div className="mt-2">
+            <p className="text-2xl font-black">{visitors.length}</p>
+            <p className="text-[10px] text-slate-400">Registrados en el sistema</p>
+          </div>
         </div>
 
-        <div className="bg-amber-50 border border-amber-200 p-3.5 rounded-2xl space-y-1">
-          <p className="text-[11px] font-bold text-amber-800 uppercase tracking-wider">Pendientes de Aprobación</p>
-          <p className="text-2xl font-black text-amber-950">
-            {visitors.filter((v) => v.status === "PENDING").length}
-          </p>
-          <p className="text-[10px] text-amber-700">Por autorizar por anfitrión o admin</p>
+        <div className="bg-amber-50/70 border border-amber-200/80 p-4 rounded-2xl flex flex-col justify-between">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold tracking-wider uppercase text-amber-900">Por Autorizar</span>
+            <Clock className="w-4 h-4 text-amber-600" />
+          </div>
+          <div className="mt-2">
+            <p className="text-2xl font-black text-amber-950">{totalPending}</p>
+            <p className="text-[10px] text-amber-700">Esperando anfitrión / admin</p>
+          </div>
         </div>
 
-        <div className="bg-blue-50 border border-blue-200 p-3.5 rounded-2xl space-y-1">
-          <p className="text-[11px] font-bold text-blue-700 uppercase tracking-wider">Caseta (Exprés)</p>
-          <p className="text-2xl font-black text-blue-900">
-            {visitors.filter((v) => v.isExpress).length}
-          </p>
-          <p className="text-[10px] text-blue-600">Registrados directo en caseta</p>
+        <div className="bg-emerald-50/70 border border-emerald-200/80 p-4 rounded-2xl flex flex-col justify-between">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold tracking-wider uppercase text-emerald-900">En Planta Activos</span>
+            <ShieldCheck className="w-4 h-4 text-emerald-600" />
+          </div>
+          <div className="mt-2">
+            <p className="text-2xl font-black text-emerald-950">{totalInPlant}</p>
+            <p className="text-[10px] text-emerald-700">Check-in activo en caseta</p>
+          </div>
         </div>
 
-        <div className="bg-emerald-50 border border-emerald-200 p-3.5 rounded-2xl space-y-1">
-          <p className="text-[11px] font-bold text-emerald-700 uppercase tracking-wider">Pre-Registros Web</p>
-          <p className="text-2xl font-black text-emerald-900">
-            {visitors.filter((v) => !v.isExpress).length}
-          </p>
-          <p className="text-[10px] text-emerald-600">Generados desde portal web</p>
+        <div className="bg-blue-50/70 border border-blue-200/80 p-4 rounded-2xl flex flex-col justify-between">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold tracking-wider uppercase text-blue-900">Aprobadas / Futuras</span>
+            <FileCheck className="w-4 h-4 text-blue-600" />
+          </div>
+          <div className="mt-2">
+            <p className="text-2xl font-black text-blue-950">{totalApproved}</p>
+            <p className="text-[10px] text-blue-700">Con QR listo para ingreso</p>
+          </div>
+        </div>
+
+        <div className="bg-purple-50/70 border border-purple-200/80 p-4 rounded-2xl flex flex-col justify-between col-span-2 lg:col-span-1">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold tracking-wider uppercase text-purple-900">Caseta Exprés</span>
+            <Building2 className="w-4 h-4 text-purple-600" />
+          </div>
+          <div className="mt-2">
+            <p className="text-2xl font-black text-purple-950">{totalExpress}</p>
+            <p className="text-[10px] text-purple-700">Registros directos en caseta</p>
+          </div>
         </div>
       </div>
 
       {/* Email feedback alert */}
       {emailFeedback && (
         <div
-          className={`p-3 rounded-xl text-xs font-semibold flex items-center justify-between border ${
+          className={`p-3.5 rounded-xl text-xs font-semibold flex items-center justify-between border ${
             emailFeedback.isError
               ? "bg-rose-50 text-rose-800 border-rose-200"
               : "bg-emerald-50 text-emerald-800 border-emerald-200"
@@ -170,207 +220,303 @@ export const AdminVisitorsTab: React.FC<AdminVisitorsTabProps> = ({
         </div>
       )}
 
-      {/* Header */}
+      {/* Header & Quick Action */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
         <div>
           <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
             <Calendar className="w-5 h-5 text-amber-600" />
-            <span>Gestión de Citas y Pases de Acceso ({visitors.length} Registradas)</span>
+            <span>Control de Citas, Pases y Folios de Acceso</span>
           </h3>
-          <p className="text-xs text-slate-500">
-            Administre las solicitudes, pre-registros web y pases de acceso generados. Eliminar una cita aquí cancela la visita específica pero <strong>mantiene intacta a la persona en el Padrón de Visitantes</strong>.
+          <p className="text-xs text-slate-500 mt-0.5">
+            Trazabilidad individual de visitas programadas y pases de planta. Todos los movimientos quedan auditados con fecha, hora y canal de registro.
           </p>
         </div>
 
         <div className="flex items-center gap-2 w-full sm:w-auto">
           <button
             onClick={onOpenCreateModal}
-            className="bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs py-2.5 px-4 rounded-xl shadow-md transition-colors flex items-center gap-1.5 shrink-0"
+            className="w-full sm:w-auto bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs py-2.5 px-4 rounded-xl shadow-md transition-all flex items-center justify-center gap-2"
           >
             <Plus className="w-4 h-4 text-amber-400" />
-            <span>Nueva Cita / Pase</span>
+            <span>Generar Nuevo Pase / Cita</span>
           </button>
         </div>
       </div>
 
-      {/* Filters Bar */}
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
-          <input
-            type="text"
-            placeholder="Buscar por Visitante, Empresa, Anfitrión, Folio QR o Placas..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-900 outline-none focus:ring-2 focus:ring-amber-600"
-          />
+      {/* Search & Multi-Filter Toolbar */}
+      <div className="bg-slate-50/80 p-3.5 rounded-2xl border border-slate-200/80 space-y-3">
+        <div className="flex flex-col md:flex-row gap-3">
+          <div className="relative flex-1">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
+            <input
+              type="text"
+              placeholder="Buscar por Visitante, Empresa, Anfitrión, Folio QR, Placas o Gafete..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 outline-none focus:ring-2 focus:ring-amber-500 focus:border-amber-500 font-medium"
+            />
+          </div>
+
+          <div className="flex flex-wrap sm:flex-nowrap gap-2">
+            <select
+              value={originFilter}
+              onChange={(e) => setOriginFilter(e.target.value)}
+              className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-amber-500"
+            >
+              <option value="ALL">Canal: Todos</option>
+              <option value="EXPRESS">🏢 Caseta (Exprés)</option>
+              <option value="PREREGISTER">🌐 Pre-Registro Web</option>
+            </select>
+
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-amber-500"
+            >
+              <option value="ALL">Estado: Todos</option>
+              <option value="PENDING">🟡 Por Autorizar ({totalPending})</option>
+              <option value="APPROVED">🔵 Aprobadas</option>
+              <option value="CHECKED_IN">🟢 En Planta ({totalInPlant})</option>
+              <option value="CHECKED_OUT">⚪ Salida Concluida</option>
+              <option value="REJECTED">🔴 Rechazadas</option>
+              <option value="CANCELLED">⚠️ Canceladas</option>
+            </select>
+
+            <select
+              value={dateFilter}
+              onChange={(e) => setDateFilter(e.target.value as any)}
+              className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-amber-500"
+            >
+              <option value="ALL">Fecha: Todas</option>
+              <option value="TODAY">📅 Para Hoy</option>
+              <option value="FUTURE">⏳ Programadas a Futuro</option>
+              <option value="PAST">📜 Históricas Pasadas</option>
+            </select>
+          </div>
         </div>
 
-        <div className="flex gap-2">
-          <select
-            value={originFilter}
-            onChange={(e) => setOriginFilter(e.target.value)}
-            className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-amber-600"
+        {/* Quick Filter Badges */}
+        <div className="flex items-center gap-1.5 flex-wrap text-[11px] text-slate-500 pt-1">
+          <span className="font-semibold text-slate-600 flex items-center gap-1">
+            <Filter className="w-3 h-3" /> Vistas Rápidas:
+          </span>
+          <button
+            onClick={() => { setStatusFilter("ALL"); setOriginFilter("ALL"); setDateFilter("ALL"); setSearchTerm(""); }}
+            className={`px-2.5 py-1 rounded-lg font-bold transition-colors ${
+              statusFilter === "ALL" && originFilter === "ALL" && dateFilter === "ALL" && !searchTerm
+                ? "bg-slate-900 text-white"
+                : "bg-white text-slate-600 border border-slate-200 hover:bg-slate-100"
+            }`}
           >
-            <option value="ALL">🏢 Origen: Todos</option>
-            <option value="EXPRESS">⚡ Caseta (Exprés)</option>
-            <option value="PREREGISTER">🌐 Pre-Registro Web</option>
-          </select>
-
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-amber-600"
+            Todos ({visitors.length})
+          </button>
+          <button
+            onClick={() => { setStatusFilter("PENDING"); setDateFilter("ALL"); }}
+            className={`px-2.5 py-1 rounded-lg font-bold transition-colors ${
+              statusFilter === "PENDING"
+                ? "bg-amber-600 text-white shadow-sm"
+                : "bg-amber-100 text-amber-900 hover:bg-amber-200"
+            }`}
           >
-            <option value="ALL">Estado: Todos</option>
-            <option value="PENDING">🟡 Pendientes</option>
-            <option value="APPROVED">🔵 Aprobadas</option>
-            <option value="CHECKED_IN">🟢 En Planta</option>
-            <option value="CHECKED_OUT">⚪ Salida</option>
-            <option value="REJECTED">🔴 Rechazadas</option>
-            <option value="CANCELLED">⚠️ Canceladas</option>
-          </select>
+            Pendientes ({totalPending})
+          </button>
+          <button
+            onClick={() => { setStatusFilter("CHECKED_IN"); setDateFilter("ALL"); }}
+            className={`px-2.5 py-1 rounded-lg font-bold transition-colors ${
+              statusFilter === "CHECKED_IN"
+                ? "bg-emerald-600 text-white shadow-sm"
+                : "bg-emerald-100 text-emerald-900 hover:bg-emerald-200"
+            }`}
+          >
+            En Planta ({totalInPlant})
+          </button>
+          <button
+            onClick={() => { setDateFilter("TODAY"); }}
+            className={`px-2.5 py-1 rounded-lg font-bold transition-colors ${
+              dateFilter === "TODAY"
+                ? "bg-blue-600 text-white shadow-sm"
+                : "bg-blue-100 text-blue-900 hover:bg-blue-200"
+            }`}
+          >
+            Citas de Hoy
+          </button>
         </div>
       </div>
 
       {/* APPOINTMENTS & PASSES TABLE */}
-      <div className="overflow-x-auto border border-slate-200 rounded-xl">
+      <div className="overflow-x-auto border border-slate-200 rounded-2xl shadow-sm">
         <table className="w-full text-left text-xs">
-          <thead className="bg-slate-50 text-slate-500 uppercase tracking-wider font-semibold border-b border-slate-200">
+          <thead className="bg-slate-900 text-slate-300 uppercase tracking-wider font-semibold text-[11px]">
             <tr>
-              <th className="p-3">#</th>
-              <th className="p-3">Folio QR / Canal</th>
-              <th className="p-3">Visitante / Empresa</th>
-              <th className="p-3">Anfitrión / Depto</th>
-              <th className="p-3">Fecha Programada</th>
-              <th className="p-3">Estado</th>
-              <th className="p-3">Gafete / Placas</th>
-              <th className="p-3 text-right">Acciones</th>
+              <th className="p-3.5 pl-4">Folio QR & Canal</th>
+              <th className="p-3.5">Visitante / Organización</th>
+              <th className="p-3.5">Anfitrión / Área</th>
+              <th className="p-3.5">Fecha Programada</th>
+              <th className="p-3.5">Estado Operativo</th>
+              <th className="p-3.5">Gafete / Vehículo</th>
+              <th className="p-3.5 pr-4 text-right">Acciones de Control</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">
+          <tbody className="divide-y divide-slate-100 bg-white">
             {filteredAppointments.length === 0 ? (
               <tr>
-                <td colSpan={8} className="p-8 text-center text-slate-400">
-                  No se encontraron citas o pases con los filtros seleccionados.
+                <td colSpan={7} className="p-12 text-center text-slate-400">
+                  <Calendar className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                  <p className="font-bold text-slate-700 text-sm">No se encontraron citas ni pases</p>
+                  <p className="text-xs text-slate-400 mt-0.5">Pruebe ajustando los filtros o genere un nuevo pase.</p>
                 </td>
               </tr>
             ) : (
-              filteredAppointments.map((v, idx) => (
-                <tr key={v.id} className="hover:bg-slate-50 transition-colors">
-                  <td className="p-3 font-mono text-slate-400">{idx + 1}</td>
-                  <td className="p-3">
-                    <p className="font-mono font-bold text-amber-800">{v.qrFolio}</p>
-                    <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-extrabold mt-0.5 ${
-                      v.isExpress
-                        ? "bg-purple-100 text-purple-800 border border-purple-200"
-                        : "bg-emerald-100 text-emerald-800 border border-emerald-200"
-                    }`}>
-                      {v.isExpress ? "🏢 Caseta (Exprés)" : "🌐 Pre-Registro"}
+              filteredAppointments.map((v) => (
+                <tr key={v.id} className="hover:bg-slate-50/80 transition-colors group">
+                  <td className="p-3.5 pl-4">
+                    <div className="flex items-center gap-2">
+                      <div className="p-1.5 bg-amber-50 border border-amber-200 rounded-lg text-amber-800">
+                        <QrCode className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <p className="font-mono font-bold text-slate-900 text-[12px]">{v.qrFolio}</p>
+                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-extrabold mt-0.5 border ${
+                          v.isExpress
+                            ? "bg-purple-50 text-purple-800 border-purple-200"
+                            : "bg-emerald-50 text-emerald-800 border-emerald-200"
+                        }`}>
+                          {v.isExpress ? "🏢 Caseta (Exprés)" : "🌐 Pre-Registro"}
+                        </span>
+                      </div>
+                    </div>
+                  </td>
+
+                  <td className="p-3.5">
+                    <p className="font-bold text-slate-900 text-sm">{v.fullName}</p>
+                    <p className="text-slate-500 font-medium text-[11px] flex items-center gap-1 mt-0.5">
+                      <Building2 className="w-3 h-3 text-slate-400" />
+                      <span>{v.company || "Particular"}</span>
+                    </p>
+                    {v.email && (
+                      <p className="text-slate-400 text-[10px] truncate max-w-[180px]">{v.email}</p>
+                    )}
+                  </td>
+
+                  <td className="p-3.5">
+                    <p className="font-semibold text-slate-900">{v.hostName}</p>
+                    <span className="inline-block bg-slate-100 text-slate-700 px-2 py-0.5 rounded text-[10px] font-medium mt-0.5">
+                      {v.department || "Planta"}
                     </span>
                   </td>
-                  <td className="p-3">
-                    <p className="font-bold text-slate-900">{v.fullName}</p>
-                    <p className="text-slate-500 text-[11px]">{v.company}</p>
-                  </td>
-                  <td className="p-3">
-                    <p className="font-medium text-slate-800">{v.hostName}</p>
-                    <p className="text-[10px] text-slate-400">{v.department}</p>
-                  </td>
-                  <td className="p-3">
-                    <div className="flex items-center space-x-1 text-slate-700">
-                      <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+
+                  <td className="p-3.5">
+                    <div className="flex items-center gap-1.5 text-slate-700">
+                      <Calendar className="w-3.5 h-3.5 text-amber-600 shrink-0" />
                       <span className="font-medium">{formatSpanishDate(v.scheduledDateTime)}</span>
                     </div>
                   </td>
-                  <td className="p-3">
-                    <span className={`px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wide border ${
-                      v.status === 'APPROVED' ? 'bg-blue-100 text-blue-800 border-blue-200' :
-                      v.status === 'PENDING' ? 'bg-amber-100 text-amber-800 border-amber-200' :
-                      v.status === 'CHECKED_IN' ? 'bg-emerald-100 text-emerald-800 border-emerald-200' :
-                      v.status === 'CHECKED_OUT' ? 'bg-slate-200 text-slate-700 border-slate-300' :
-                      v.status === 'REJECTED' ? 'bg-rose-100 text-rose-800 border-rose-200' :
+
+                  <td className="p-3.5">
+                    <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-[11px] font-bold border ${
+                      v.status === 'APPROVED' ? 'bg-blue-50 text-blue-800 border-blue-200' :
+                      v.status === 'PENDING' ? 'bg-amber-50 text-amber-900 border-amber-200 animate-pulse' :
+                      v.status === 'CHECKED_IN' ? 'bg-emerald-50 text-emerald-900 border-emerald-200 font-black' :
+                      v.status === 'CHECKED_OUT' ? 'bg-slate-100 text-slate-700 border-slate-200' :
+                      v.status === 'REJECTED' ? 'bg-rose-50 text-rose-800 border-rose-200' :
                       'bg-slate-100 text-slate-600 border-slate-200'
                     }`}>
-                      {v.status === 'APPROVED' ? '🔵 Aprobada' :
-                       v.status === 'PENDING' ? '🟡 Pendiente' :
-                       v.status === 'CHECKED_IN' ? '🟢 En Planta' :
-                       v.status === 'CHECKED_OUT' ? '⚪ Salida' :
-                       v.status === 'REJECTED' ? '🔴 Rechazada' :
-                       '⚠️ Cancelada'}
+                      <span className={`w-1.5 h-1.5 rounded-full ${
+                        v.status === 'APPROVED' ? 'bg-blue-600' :
+                        v.status === 'PENDING' ? 'bg-amber-500' :
+                        v.status === 'CHECKED_IN' ? 'bg-emerald-600' :
+                        v.status === 'CHECKED_OUT' ? 'bg-slate-400' :
+                        v.status === 'REJECTED' ? 'bg-rose-600' : 'bg-slate-400'
+                      }`} />
+                      {v.status === 'APPROVED' ? 'Aprobada' :
+                       v.status === 'PENDING' ? 'Por Autorizar' :
+                       v.status === 'CHECKED_IN' ? 'En Planta' :
+                       v.status === 'CHECKED_OUT' ? 'Salida Concluida' :
+                       v.status === 'REJECTED' ? 'Rechazada' : 'Cancelada'}
                     </span>
                   </td>
-                  <td className="p-3">
-                    {v.badgeNumber ? (
-                      <span className="font-mono bg-amber-100 text-amber-950 px-2 py-0.5 rounded font-bold border border-amber-300">
-                        {v.badgeNumber}
-                      </span>
-                    ) : (
-                      <span className="text-slate-400 text-[11px]">Sin gafete</span>
-                    )}
-                    {v.vehiclePlates && (
-                      <p className="font-mono text-[10px] text-slate-600 mt-0.5">🚗 {v.vehiclePlates}</p>
-                    )}
-                  </td>
-                  <td className="p-3 text-right space-x-1 whitespace-nowrap">
-                    {/* Send / Resend Email button */}
-                    <button
-                      onClick={() => handleResendEmail(v)}
-                      disabled={sendingEmailForId === v.id}
-                      className="p-1.5 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50"
-                      title="Enviar / Reenviar Correo No-Reply a Visitante y Anfitrión"
-                    >
-                      {sendingEmailForId === v.id ? (
-                        <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
+
+                  <td className="p-3.5">
+                    <div className="space-y-1">
+                      {v.badgeNumber ? (
+                        <div className="inline-flex items-center gap-1 font-mono bg-amber-100 text-amber-950 px-2 py-0.5 rounded text-[11px] font-bold border border-amber-300">
+                          <span>Gafete:</span>
+                          <span>{v.badgeNumber}</span>
+                        </div>
                       ) : (
-                        <Mail className="w-4 h-4" />
+                        <span className="text-slate-400 text-[11px] italic">Sin gafete</span>
                       )}
-                    </button>
 
-                    {v.status === "PENDING" && (
-                      <>
-                        <button
-                          onClick={() => onApproveVisitor(v)}
-                          className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
-                          title="Aprobar Cita"
-                        >
-                          <Check className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => onOpenRejectModal(v)}
-                          className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
-                          title="Rechazar Cita"
-                        >
-                          <XCircle className="w-4 h-4" />
-                        </button>
-                      </>
-                    )}
+                      {v.vehiclePlates && (
+                        <div className="flex items-center gap-1 font-mono text-[10px] text-slate-600">
+                          <Car className="w-3 h-3 text-slate-400" />
+                          <span>{v.vehiclePlates}</span>
+                        </div>
+                      )}
+                    </div>
+                  </td>
 
-                    {v.status === 'REJECTED' || v.status === 'CANCELLED' ? (
+                  <td className="p-3.5 pr-4 text-right whitespace-nowrap">
+                    <div className="inline-flex items-center gap-1">
+                      {/* Send / Resend Email button */}
                       <button
-                        onClick={() => onEditVisitor(v)}
-                        className="p-1.5 text-rose-600 hover:text-rose-800 hover:bg-rose-50 rounded-lg transition-colors"
-                        title="Ver Registro Finalizado (Inmutable)"
+                        onClick={() => handleResendEmail(v)}
+                        disabled={sendingEmailForId === v.id}
+                        className="p-2 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-xl transition-colors disabled:opacity-50 border border-transparent hover:border-blue-200"
+                        title="Reenviar Notificación por Correo No-Reply"
                       >
-                        <Eye className="w-4 h-4" />
+                        {sendingEmailForId === v.id ? (
+                          <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
+                        ) : (
+                          <Mail className="w-4 h-4" />
+                        )}
                       </button>
-                    ) : (
-                      <button
-                        onClick={() => onEditVisitor(v)}
-                        className="p-1.5 text-slate-600 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
-                        title={v.status === 'APPROVED' || v.status === 'CHECKED_IN' ? 'Ver / Asignar Gafete (Datos Bloqueados)' : 'Editar Cita'}
-                      >
-                        <Edit2 className="w-4 h-4" />
-                      </button>
-                    )}
 
-                    <button
-                      onClick={() => onDeleteVisitor(v)}
-                      className="p-1.5 text-slate-600 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
-                      title="Eliminar Registro de Cita"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                      {v.status === "PENDING" && (
+                        <>
+                          <button
+                            onClick={() => onApproveVisitor(v)}
+                            className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-xl transition-colors border border-transparent hover:border-emerald-200"
+                            title="Aprobar Cita de Inmediato"
+                          >
+                            <Check className="w-4 h-4 font-bold" />
+                          </button>
+                          <button
+                            onClick={() => onOpenRejectModal(v)}
+                            className="p-2 text-rose-600 hover:bg-rose-50 rounded-xl transition-colors border border-transparent hover:border-rose-200"
+                            title="Rechazar Cita"
+                          >
+                            <XCircle className="w-4 h-4" />
+                          </button>
+                        </>
+                      )}
+
+                      {v.status === 'REJECTED' || v.status === 'CANCELLED' ? (
+                        <button
+                          onClick={() => onEditVisitor(v)}
+                          className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition-colors"
+                          title="Ver Registro Finalizado (Inmutable)"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => onEditVisitor(v)}
+                          className="p-2 text-slate-600 hover:text-amber-600 hover:bg-amber-50 rounded-xl transition-colors border border-transparent hover:border-amber-200"
+                          title={v.status === 'APPROVED' || v.status === 'CHECKED_IN' ? 'Ver / Asignar Gafete' : 'Editar Cita'}
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                      )}
+
+                      <button
+                        onClick={() => onDeleteVisitor(v)}
+                        className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors"
+                        title="Eliminar Registro de Pase"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))
@@ -381,3 +527,4 @@ export const AdminVisitorsTab: React.FC<AdminVisitorsTabProps> = ({
     </div>
   );
 };
+

@@ -1,6 +1,7 @@
 import React from "react";
 import { VisitorProfile, Visitor } from "../types";
 import { formatSpanishDate } from "../lib/utils";
+import { GuardComplianceAlertBanner } from "./GuardComplianceAlertBanner";
 import {
   X,
   UserCheck,
@@ -80,6 +81,9 @@ export const AdminVisitorProfileDetailModal: React.FC<AdminVisitorProfileDetailM
 
         {/* Content Body */}
         <div className="p-6 space-y-5 overflow-y-auto flex-1 text-xs text-slate-700">
+          {/* Compliance and Expiration Status Banner */}
+          <GuardComplianceAlertBanner visitor={profile} />
+
           {/* Contact and ID Grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-1">

@@ -10,7 +10,8 @@ import {
   updateVisitorStatus,
   addVisitorProfile,
   updateVisitorProfile,
-  deleteVisitorProfile
+  deleteVisitorProfile,
+  cleanDatabaseKeepEmployeesAndVisitors
 } from "../lib/firebase";
 import { sendNoReplyEmailNotification, sendEmailViaAppsScriptWebhook } from "../lib/notifications";
 import {
@@ -51,7 +52,9 @@ import {
   ExternalLink,
   Code2,
   HelpCircle,
-  Zap
+  Zap,
+  ShieldCheck,
+  Save
 } from "lucide-react";
 
 interface AdminPanelProps {
@@ -423,6 +426,29 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ hosts, auditLogs, config
     }
   };
 
+  // Clean Database for Production (Keep Employees, Visitors and Webhook)
+  const [isCleaningDb, setIsCleaningDb] = useState(false);
+  const handleCleanDatabaseForCompany = async () => {
+    const confirmClean = window.confirm(
+      "¿Desea preparar la base de datos para uso oficial de la empresa?\n\n• Se CONSERVARÁN todos los Empleados registrados (" + hosts.length + " empleados).\n• Se CONSERVARÁ el Padrón de Visitantes y la configuración de correo/webhook.\n• Se limpiarán las citas y bitácoras transitorias de prueba."
+    );
+    if (!confirmClean) return;
+
+    setIsCleaningDb(true);
+    try {
+      const res = await cleanDatabaseKeepEmployeesAndVisitors();
+      if (res.success) {
+        alert("¡Base de datos lista! Se han conservado los empleados y visitantes registrados.");
+      } else {
+        alert(res.message);
+      }
+    } catch (e: any) {
+      alert("Error: " + e.message);
+    } finally {
+      setIsCleaningDb(false);
+    }
+  };
+
   // Login Screen
   if (!isAuthenticated) {
     return (
@@ -620,32 +646,42 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ hosts, auditLogs, config
       {/* TAB 4: PLANT SETTINGS & MASTER KEYS */}
       {activeTab === "settings" && (
         <div className="space-y-6">
-          <div className="p-4 bg-slate-900 text-slate-300 rounded-2xl border border-slate-800 text-xs flex items-start gap-3">
-            <Shield className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
-            <div>
-              <p className="font-bold text-white">Configuración General de Planta e Infraestructura</p>
-              <p className="text-slate-400 mt-0.5">
-                Las contraseñas y NIPs individuales de cada empleado se administran en la pestaña <strong>Empleados</strong>. En esta sección se ajustan las claves maestras de caseta, nombre institucional y el servidor de correo.
-              </p>
+          {/* Header Banner */}
+          <div className="p-4 bg-slate-900 text-slate-300 rounded-2xl border border-slate-800 text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-sm">
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 bg-amber-500/20 rounded-xl border border-amber-500/30 text-amber-400 shrink-0">
+                <Shield className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="font-bold text-white text-sm">Ajustes Generales de Seguridad & Parámetros Corporativos</p>
+                <p className="text-slate-400 text-xs mt-0.5">
+                  Administre los NIPs de acceso central, la configuración del servidor No-Reply corporativo y respaldos de seguridad.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="bg-emerald-950/90 border border-emerald-500/40 text-emerald-300 text-[11px] font-bold px-2.5 py-1 rounded-full flex items-center gap-1.5">
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" /> Parámetros Blindados
+              </span>
             </div>
           </div>
 
           {/* Google Workspace No-Reply Gmail Connection Card */}
-          <div className="bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 text-white p-6 rounded-2xl shadow-xl border border-blue-800 space-y-4">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-blue-800/80 pb-4">
+          <div className="bg-gradient-to-r from-slate-900 via-slate-900 to-blue-950 text-white p-6 rounded-2xl shadow-md border border-slate-800 space-y-4">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
               <div className="flex items-center space-x-3">
                 <div className="p-3 bg-blue-600 rounded-xl text-white shadow-md">
                   <Mail className="w-6 h-6" />
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <h3 className="font-bold text-base text-white">Servidor de Correo No-Reply (Google Gmail API)</h3>
+                    <h3 className="font-bold text-base text-white">Servidor de Notificaciones No-Reply (Google Gmail)</h3>
                     <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
-                      <Sparkles className="w-3 h-3 text-emerald-400" /> OAuth2 Activo
+                      <Sparkles className="w-3 h-3 text-emerald-400" /> Mensajería Oficial
                     </span>
                   </div>
                   <p className="text-xs text-slate-300">
-                    Envía automáticamente notificaciones reales de citas a las cuentas de correo de visitantes y anfitriones.
+                    Despacha notificaciones automáticas de aprobación, cancelaciones y folios QR a visitantes y anfitriones.
                   </p>
                 </div>
               </div>
@@ -665,7 +701,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ hosts, auditLogs, config
                     title="Iniciar sesión con otra cuenta de Google (ej. noreply@dimer.com.mx)"
                   >
                     <Mail className="w-3.5 h-3.5" />
-                    <span>Cambiar Cuenta de Google</span>
+                    <span>Cambiar Cuenta</span>
                   </button>
                   <button
                     onClick={handleDisconnectGmail}
@@ -678,7 +714,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ hosts, auditLogs, config
                 <button
                   onClick={handleConnectGmail}
                   disabled={isConnectingGmail}
-                  className="bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white font-bold text-xs px-4 py-2.5 rounded-xl shadow-lg transition-all flex items-center gap-2"
+                  className="bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs px-4 py-2.5 rounded-xl shadow-md transition-all flex items-center gap-2"
                 >
                   <Mail className="w-4 h-4" />
                   <span>{isConnectingGmail ? "Conectando..." : "Conectar Cuenta Google No-Reply"}</span>
@@ -687,15 +723,15 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ hosts, auditLogs, config
             </div>
 
             {/* Explanatory note about Google account vs noreply address */}
-            <div className="p-3.5 bg-blue-950/50 rounded-xl border border-blue-800/60 text-xs text-blue-200 space-y-1.5">
+            <div className="p-3.5 bg-blue-950/40 rounded-xl border border-blue-900/50 text-xs text-blue-200 space-y-1.5">
               <p className="font-bold text-white flex items-center gap-1.5">
-                <span>💡</span> <span>¿Cómo funciona el remitente No-Reply en Google Workspace?</span>
+                <span>💡</span> <span>Arquitectura de Envío No-Reply Corporativo:</span>
               </p>
               <p className="text-[11px] text-blue-200/90 leading-relaxed">
-                • <strong>Si cuenta con la casilla <code className="bg-blue-900/60 px-1 py-0.5 rounded text-white font-mono">noreply@dimer.com.mx</code> en Google Workspace:</strong> Haga clic en <em>"Cambiar Cuenta de Google"</em> e ingrese con las credenciales de esa cuenta.
+                • <strong>Casilla No-Reply dedicada (<code className="bg-blue-900/60 px-1 py-0.5 rounded text-white font-mono">noreply@dimer.com.mx</code>):</strong> Puede conectar directamente la cuenta Google de la casilla o utilizar el Webhook de Google Apps Script integrado abajo para máxima disponibilidad multi-dispositivo.
               </p>
               <p className="text-[11px] text-blue-200/90 leading-relaxed">
-                • <strong>Si utiliza su cuenta corporativa (<code className="bg-blue-900/60 px-1 py-0.5 rounded text-white font-mono">javier.hernandez@dimer.com.mx</code>):</strong> El sistema envía los correos a través de su cuenta pero con el nombre visible <strong>"{config.noReplySenderName || 'No-Reply Control de Acceso'}"</strong> y dirección de respuesta (Reply-To) hacia <strong>"{config.noReplyEmail || 'noreply@dimer.com.mx'}"</strong>.
+                • <strong>Identidad Institucional:</strong> Todas las alertas salientes se emiten a nombre de <strong>"{config.noReplySenderName || 'No-Reply Control de Acceso'}"</strong> y configuran la respuesta a <strong>"{config.noReplyEmail || 'noreply@dimer.com.mx'}"</strong>.
               </p>
             </div>
 
@@ -725,34 +761,37 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ hosts, auditLogs, config
             )}
 
             {/* Test Email Delivery Section */}
-            <div className="bg-slate-950/60 p-4 rounded-xl border border-slate-800 space-y-3">
-              <p className="text-xs font-bold text-blue-200">Prueba de Envío de Correo No-Reply en Tiempo Real:</p>
+            <div className="bg-slate-950/70 p-4 rounded-xl border border-slate-800 space-y-3">
+              <p className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
+                <Send className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Prueba de Verificación de Envío No-Reply en Tiempo Real:</span>
+              </p>
               
               <form onSubmit={handleSendTestEmail} className="flex flex-col sm:flex-row gap-2">
                 <input
                   type="email"
                   required
-                  placeholder="Ingrese un correo destinatario (ej. su correo personal)..."
+                  placeholder="Ingrese correo de prueba (ej. su correo personal o corporativo)..."
                   value={testEmailAddress}
                   onChange={(e) => setTestEmailAddress(e.target.value)}
-                  className="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white outline-none focus:ring-2 focus:ring-blue-500"
+                  className="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white outline-none focus:ring-2 focus:ring-blue-500 font-medium"
                 />
                 <button
                   type="submit"
                   disabled={!gmailToken && !appsScriptWebhookUrlForm.trim()}
-                  className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shrink-0 ${
+                  className={`px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shrink-0 ${
                     gmailToken || appsScriptWebhookUrlForm.trim()
-                      ? "bg-emerald-600 hover:bg-emerald-700 text-white shadow"
+                      ? "bg-emerald-600 hover:bg-emerald-700 text-white shadow-md"
                       : "bg-slate-800 text-slate-500 cursor-not-allowed"
                   }`}
                 >
                   <Send className="w-3.5 h-3.5" />
-                  <span>Enviar Correo de Prueba</span>
+                  <span>Enviar Correo de Verificación</span>
                 </button>
               </form>
 
               {testEmailStatus && (
-                <div className={`p-2.5 rounded-lg text-xs font-mono ${
+                <div className={`p-3 rounded-xl text-xs font-mono font-medium ${
                   testEmailStatus.includes("éxito") ? "bg-emerald-950/80 text-emerald-300 border border-emerald-800" :
                   testEmailStatus.includes("Error") ? "bg-rose-950/80 text-rose-300 border border-rose-800" :
                   "bg-blue-950/80 text-blue-300 border border-blue-800"
@@ -762,94 +801,106 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ hosts, auditLogs, config
               )}
 
               {!gmailToken && !appsScriptWebhookUrlForm.trim() && (
-                <p className="text-[11px] text-amber-300/80">
-                  ℹ️ Haga clic en <strong>"Conectar Cuenta Google No-Reply"</strong> o configure un <strong>Webhook de Google Apps Script</strong> para activar el envío de correos.
+                <p className="text-[11px] text-amber-300/90 font-medium">
+                  ℹ️ Conecte su cuenta de Google o configure la URL del Webhook para probar la entrega inmediata de correos.
                 </p>
               )}
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* PIN Configuration Form */}
-            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-              <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
-                <KeyRound className="w-5 h-5 text-amber-600" />
-                <span>Configuración de NIPs de Acceso</span>
-              </h3>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* PIN Configuration Form (2 Columns) */}
+            <div className="lg:col-span-2 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-5">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
+                  <KeyRound className="w-5 h-5 text-amber-600" />
+                  <span>NIPs Maestros & Identidad Corporativa</span>
+                </h3>
+                <span className="text-[11px] text-slate-400 font-medium">Controles Centrales</span>
+              </div>
 
               <form onSubmit={handleSavePins} className="space-y-4 text-xs">
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">
-                    NIP Nivel Caseta (Guardia de Seguridad)
-                  </label>
-                  <input
-                    type="text"
-                    maxLength={4}
-                    required
-                    value={guardPinForm}
-                    onChange={(e) => setGuardPinForm(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-mono text-base font-bold text-slate-900 outline-none focus:ring-2 focus:ring-amber-600"
-                  />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="bg-slate-50/70 p-3.5 rounded-xl border border-slate-200/80 space-y-1.5">
+                    <label className="block font-bold text-slate-800 text-xs">
+                      NIP Nivel Caseta (Guardia de Seguridad)
+                    </label>
+                    <input
+                      type="text"
+                      maxLength={4}
+                      required
+                      value={guardPinForm}
+                      onChange={(e) => setGuardPinForm(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl font-mono text-base font-black text-slate-900 outline-none focus:ring-2 focus:ring-amber-500"
+                    />
+                    <p className="text-[10px] text-slate-500">Clave de 4 dígitos para entrada rápida en caseta.</p>
+                  </div>
+
+                  <div className="bg-slate-50/70 p-3.5 rounded-xl border border-slate-200/80 space-y-1.5">
+                    <label className="block font-bold text-slate-800 text-xs">
+                      NIP Nivel Administrador Central
+                    </label>
+                    <input
+                      type="text"
+                      maxLength={4}
+                      required
+                      value={adminPinForm}
+                      onChange={(e) => setAdminPinForm(e.target.value)}
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl font-mono text-base font-black text-slate-900 outline-none focus:ring-2 focus:ring-amber-500"
+                    />
+                    <p className="text-[10px] text-slate-500">Clave de 4 dígitos para desbloquear este panel.</p>
+                  </div>
                 </div>
 
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">
-                    NIP Nivel Administrador
-                  </label>
-                  <input
-                    type="text"
-                    maxLength={4}
-                    required
-                    value={adminPinForm}
-                    onChange={(e) => setAdminPinForm(e.target.value)}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl font-mono text-base font-bold text-slate-900 outline-none focus:ring-2 focus:ring-amber-600"
-                  />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">
+                      Correo Oficial de No Respuesta (No-Reply)
+                    </label>
+                    <input
+                      type="email"
+                      required
+                      value={noReplyEmailForm}
+                      onChange={(e) => setNoReplyEmailForm(e.target.value)}
+                      placeholder="no-reply@dimer.com.mx"
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-amber-500"
+                    />
+                    <p className="text-[10px] text-slate-500 mt-0.5">
+                      Dirección mostrada como emisor en los mensajes corporativos.
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">
+                      Nombre del Remitente Institucional
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={noReplySenderNameForm}
+                      onChange={(e) => setNoReplySenderNameForm(e.target.value)}
+                      placeholder="No-Reply Control de Acceso"
+                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-amber-500"
+                    />
+                    <p className="text-[10px] text-slate-500 mt-0.5">
+                      Nombre que observan visitantes y empleados en su bandeja de entrada.
+                    </p>
+                  </div>
                 </div>
 
-                <div className="pt-2 border-t border-slate-200">
-                  <label className="block font-semibold text-slate-700 mb-1">
-                    Correo Oficial de No Respuesta (No-Reply)
-                  </label>
-                  <input
-                    type="email"
-                    required
-                    value={noReplyEmailForm}
-                    onChange={(e) => setNoReplyEmailForm(e.target.value)}
-                    placeholder="no-reply@dimer.com.mx"
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-blue-600"
-                  />
-                  <p className="text-[10px] text-slate-500 mt-0.5">
-                    Dirección que figurará en el remitente de todas las notificaciones automáticas.
-                  </p>
-                </div>
-
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">
-                    Nombre del Remitente Institucional
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={noReplySenderNameForm}
-                    onChange={(e) => setNoReplySenderNameForm(e.target.value)}
-                    placeholder="No-Reply Control de Acceso"
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 outline-none focus:ring-2 focus:ring-blue-600"
-                  />
-                </div>
-
-                <div className="pt-2 border-t border-slate-200">
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="font-semibold text-slate-700 flex items-center gap-1.5">
-                      <Zap className="w-3.5 h-3.5 text-amber-500" />
-                      <span>URL de Webhook Google Apps Script (Recomendado Multi-Dispositivo)</span>
+                <div className="pt-3 border-t border-slate-100">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="font-bold text-slate-800 flex items-center gap-1.5 text-xs">
+                      <Zap className="w-4 h-4 text-amber-500" />
+                      <span>URL de Webhook Google Apps Script (Recomendado 24/7 Multi-Dispositivo)</span>
                     </label>
                     <button
                       type="button"
                       onClick={() => setShowAppsScriptGuide(!showAppsScriptGuide)}
                       className="text-[11px] font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1 hover:underline"
                     >
-                      <Code2 className="w-3 h-3" />
-                      <span>{showAppsScriptGuide ? "Ocultar Código" : "Ver Código y Guía"}</span>
+                      <Code2 className="w-3.5 h-3.5" />
+                      <span>{showAppsScriptGuide ? "Ocultar Código" : "Ver Código & Instrucciones"}</span>
                     </button>
                   </div>
                   <input
@@ -857,18 +908,18 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ hosts, auditLogs, config
                     value={appsScriptWebhookUrlForm}
                     onChange={(e) => setAppsScriptWebhookUrlForm(e.target.value)}
                     placeholder="https://script.google.com/macros/s/.../exec"
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono text-slate-900 outline-none focus:ring-2 focus:ring-blue-600"
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono text-slate-900 outline-none focus:ring-2 focus:ring-amber-500"
                   />
                   <p className="text-[10px] text-slate-500 mt-1 leading-relaxed">
                     Permite que <strong>cualquier persona</strong> (visitantes desde su celular, guardias en caseta y anfitriones) envíe correos reales 24/7 sin pedir inicio de sesión individual.
                   </p>
 
                   {showAppsScriptGuide && (
-                    <div className="mt-3 p-3.5 bg-slate-900 text-slate-200 rounded-xl border border-slate-700 text-xs space-y-2.5 animate-fadeIn">
+                    <div className="mt-3 p-4 bg-slate-900 text-slate-200 rounded-xl border border-slate-700 text-xs space-y-3 animate-fadeIn">
                       <div className="flex items-center justify-between">
                         <span className="font-bold text-emerald-400 flex items-center gap-1.5">
                           <Code2 className="w-4 h-4" />
-                          <span>Código para Google Apps Script (script.google.com):</span>
+                          <span>Código Google Apps Script:</span>
                         </span>
                         <button
                           type="button"
@@ -900,14 +951,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ hosts, auditLogs, config
                             setCopiedCode(true);
                             setTimeout(() => setCopiedCode(false), 3000);
                           }}
-                          className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-[11px] font-bold flex items-center gap-1 transition-colors"
+                          className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-[11px] font-bold flex items-center gap-1 transition-colors shadow-sm"
                         >
-                          {copiedCode ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                          <span>{copiedCode ? "¡Copiado!" : "Copiar Código"}</span>
+                          {copiedCode ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                          <span>{copiedCode ? "¡Copiado al Portapapeles!" : "Copiar Código"}</span>
                         </button>
                       </div>
 
-                      <pre className="bg-slate-950 p-2.5 rounded-lg font-mono text-[11px] text-slate-300 overflow-x-auto leading-relaxed border border-slate-800">
+                      <pre className="bg-slate-950 p-3 rounded-lg font-mono text-[11px] text-slate-300 overflow-x-auto leading-relaxed border border-slate-800">
 {`function doPost(e) {
   try {
     var data = JSON.parse(e.postData.contents);
@@ -933,7 +984,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ hosts, auditLogs, config
 }`}
                       </pre>
 
-                      <div className="text-[11px] text-slate-300 space-y-1 bg-slate-800/80 p-2.5 rounded-lg">
+                      <div className="text-[11px] text-slate-300 space-y-1 bg-slate-800/90 p-3 rounded-lg border border-slate-700">
                         <p className="font-bold text-amber-300">Pasos de instalación (1 minuto):</p>
                         <p>1. Entra a <a href="https://script.google.com" target="_blank" rel="noreferrer" className="text-blue-400 underline font-semibold">script.google.com</a> con tu cuenta Google.</p>
                         <p>2. Crea un <strong>Nuevo proyecto</strong> y pega el código anterior.</p>
@@ -946,46 +997,72 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ hosts, auditLogs, config
                 </div>
 
                 {pinSuccessMsg && (
-                  <p className="text-xs text-emerald-600 font-bold flex items-center gap-1">
-                    <Check className="w-4 h-4" /> Configuración y NIPs actualizados correctamente.
-                  </p>
+                  <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-800 font-bold flex items-center gap-1.5">
+                    <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>Configuración y NIPs actualizados correctamente en base de datos.</span>
+                  </div>
                 )}
 
                 <button
                   type="submit"
-                  className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-2.5 rounded-xl shadow-md transition-colors"
+                  className="w-full bg-slate-900 hover:bg-slate-800 text-white font-bold py-3 rounded-xl shadow-md transition-colors text-xs flex items-center justify-center gap-2"
                 >
-                  Guardar Configuración General
+                  <Save className="w-4 h-4 text-amber-400" />
+                  <span>Guardar Parámetros de Seguridad</span>
                 </button>
               </form>
             </div>
 
-            {/* Backup & Demo Data */}
-            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-              <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
-                <Download className="w-5 h-5 text-blue-600" />
-                <span>Respaldo de Datos y Demostración</span>
-              </h3>
+            {/* Backup, Security & Reset Column */}
+            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-5 flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
+                  <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
+                    <Download className="w-5 h-5 text-blue-600" />
+                    <span>Mantenimiento & Respaldos</span>
+                  </h3>
+                </div>
 
-              <p className="text-xs text-slate-500">
-                Exporte el contenido completo de la base de datos en formato JSON o restablezca los datos iniciales.
-              </p>
+                <p className="text-xs text-slate-500 leading-relaxed mb-4">
+                  Descargue respaldos íntegros de la base de datos para auditorías o reinicie el sistema para su operación oficial.
+                </p>
 
-              <div className="space-y-2 pt-2">
-                <button
-                  onClick={handleExportJSON}
-                  className="w-full bg-slate-100 hover:bg-slate-200 text-slate-900 font-bold py-2.5 px-4 rounded-xl border border-slate-300 text-xs transition-colors flex items-center justify-center space-x-2"
-                >
-                  <Download className="w-4 h-4 text-blue-600" />
-                  <span>Descargar Respaldo JSON Completo</span>
-                </button>
+                <div className="space-y-3">
+                  <button
+                    onClick={handleExportJSON}
+                    className="w-full bg-slate-50 hover:bg-slate-100 text-slate-800 font-bold py-2.5 px-4 rounded-xl border border-slate-300 text-xs transition-colors flex items-center justify-center space-x-2 shadow-sm"
+                  >
+                    <Download className="w-4 h-4 text-blue-600" />
+                    <span>Descargar Respaldo JSON Completo</span>
+                  </button>
 
+                  <div className="p-4 bg-emerald-50/70 border border-emerald-200 rounded-xl space-y-2">
+                    <p className="text-xs font-bold text-emerald-950 flex items-center gap-1.5">
+                      <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                      <span>Puesta en Marcha Oficial</span>
+                    </p>
+                    <p className="text-[11px] text-emerald-800/90 leading-relaxed">
+                      Limpia citas de prueba pero <strong>conserva el 100% de Empleados ({hosts.length})</strong>, el Padrón de Visitantes y la conexión de correo.
+                    </p>
+                    <button
+                      onClick={handleCleanDatabaseForCompany}
+                      disabled={isCleaningDb}
+                      className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 px-4 rounded-xl text-xs transition-all shadow-md flex items-center justify-center space-x-2"
+                    >
+                      <CheckCircle2 className="w-4 h-4 text-emerald-200" />
+                      <span>{isCleaningDb ? "Limpiando..." : "Iniciar Empresa (Conserva Empleados)"}</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-3 border-t border-slate-100">
                 <button
                   onClick={handleSeedData}
-                  className="w-full bg-amber-50 hover:bg-amber-100 text-amber-900 font-bold py-2.5 px-4 rounded-xl border border-amber-300 text-xs transition-colors flex items-center justify-center space-x-2"
+                  className="w-full bg-slate-50 hover:bg-amber-50 text-slate-600 hover:text-amber-900 font-semibold py-2 px-3 rounded-xl border border-slate-200 text-[11px] transition-colors flex items-center justify-center space-x-2"
                 >
-                  <RefreshCw className="w-4 h-4 text-amber-600" />
-                  <span>Restaurar / Poblar Anfitriones y Visitantes de Prueba en Firestore</span>
+                  <RefreshCw className="w-3.5 h-3.5 text-slate-500" />
+                  <span>Cargar Datos de Demostración</span>
                 </button>
               </div>
             </div>

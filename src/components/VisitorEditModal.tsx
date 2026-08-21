@@ -64,7 +64,13 @@ export const VisitorEditModal: React.FC<VisitorEditModalProps> = ({
   // Type Specific Fields
   // Contratista
   const [workOrderPo, setWorkOrderPo] = useState(visitor?.contractorDetails?.workOrderPo || "");
-  const [imssInsuranceNum, setImssInsuranceNum] = useState(visitor?.contractorDetails?.imssInsuranceNum || "");
+  const [imssInsuranceNum, setImssInsuranceNum] = useState(visitor?.contractorDetails?.imssInsuranceNum || visitor?.imssNumber || "");
+  const [imssExpirationDate, setImssExpirationDate] = useState(visitor?.contractorDetails?.imssExpirationDate || visitor?.imssExpirationDate || "");
+  const [suaPaymentProof, setSuaPaymentProof] = useState(visitor?.contractorDetails?.suaPaymentProof || visitor?.suaPaymentProof || "");
+  const [dc3Certification, setDc3Certification] = useState(visitor?.contractorDetails?.dc3Certification || visitor?.dc3Certification || "");
+  const [antidopingCertificate, setAntidopingCertificate] = useState(visitor?.contractorDetails?.antidopingCertificate || visitor?.antidopingCertificate || "");
+  const [workPlanDescription, setWorkPlanDescription] = useState(visitor?.contractorDetails?.workPlanDescription || visitor?.workPlanDescription || "");
+  const [astPermitFolio, setAstPermitFolio] = useState(visitor?.contractorDetails?.astPermitFolio || "");
   const [hasEpp, setHasEpp] = useState(visitor?.contractorDetails?.hasEpp ?? true);
   const [highRiskPermit, setHighRiskPermit] = useState(visitor?.contractorDetails?.highRiskPermit ?? false);
   const [highRiskType, setHighRiskType] = useState(visitor?.contractorDetails?.highRiskType || "Trabajos en Alturas");
@@ -131,7 +137,13 @@ export const VisitorEditModal: React.FC<VisitorEditModalProps> = ({
       setCancellationReason(visitor.cancellationReason || "");
 
       setWorkOrderPo(visitor.contractorDetails?.workOrderPo || "");
-      setImssInsuranceNum(visitor.contractorDetails?.imssInsuranceNum || "");
+      setImssInsuranceNum(visitor.contractorDetails?.imssInsuranceNum || visitor.imssNumber || "");
+      setImssExpirationDate(visitor.contractorDetails?.imssExpirationDate || visitor.imssExpirationDate || "");
+      setSuaPaymentProof(visitor.contractorDetails?.suaPaymentProof || visitor.suaPaymentProof || "");
+      setDc3Certification(visitor.contractorDetails?.dc3Certification || visitor.dc3Certification || "");
+      setAntidopingCertificate(visitor.contractorDetails?.antidopingCertificate || visitor.antidopingCertificate || "");
+      setWorkPlanDescription(visitor.contractorDetails?.workPlanDescription || visitor.workPlanDescription || "");
+      setAstPermitFolio(visitor.contractorDetails?.astPermitFolio || "");
       setHasEpp(visitor.contractorDetails?.hasEpp ?? true);
       setHighRiskPermit(visitor.contractorDetails?.highRiskPermit ?? false);
       setHighRiskType(visitor.contractorDetails?.highRiskType || "Trabajos en Alturas");
@@ -170,6 +182,12 @@ export const VisitorEditModal: React.FC<VisitorEditModalProps> = ({
 
       setWorkOrderPo("");
       setImssInsuranceNum("");
+      setImssExpirationDate("");
+      setSuaPaymentProof("");
+      setDc3Certification("");
+      setAntidopingCertificate("");
+      setWorkPlanDescription("");
+      setAstPermitFolio("");
       setHasEpp(true);
       setHighRiskPermit(false);
       setHighRiskType("Trabajos en Alturas");
@@ -355,9 +373,22 @@ export const VisitorEditModal: React.FC<VisitorEditModalProps> = ({
     if (vis.contractorDetails) {
       if (vis.contractorDetails.workOrderPo) setWorkOrderPo(vis.contractorDetails.workOrderPo);
       if (vis.contractorDetails.imssInsuranceNum) setImssInsuranceNum(vis.contractorDetails.imssInsuranceNum);
+      if (vis.contractorDetails.imssExpirationDate) setImssExpirationDate(vis.contractorDetails.imssExpirationDate);
+      if (vis.contractorDetails.suaPaymentProof) setSuaPaymentProof(vis.contractorDetails.suaPaymentProof);
+      if (vis.contractorDetails.dc3Certification) setDc3Certification(vis.contractorDetails.dc3Certification);
+      if (vis.contractorDetails.antidopingCertificate) setAntidopingCertificate(vis.contractorDetails.antidopingCertificate);
+      if (vis.contractorDetails.workPlanDescription) setWorkPlanDescription(vis.contractorDetails.workPlanDescription);
+      if (vis.contractorDetails.astPermitFolio) setAstPermitFolio(vis.contractorDetails.astPermitFolio);
       if (vis.contractorDetails.hasEpp !== undefined) setHasEpp(vis.contractorDetails.hasEpp);
       if (vis.contractorDetails.highRiskPermit !== undefined) setHighRiskPermit(vis.contractorDetails.highRiskPermit);
       if (vis.contractorDetails.highRiskType) setHighRiskType(vis.contractorDetails.highRiskType);
+    } else if (v.imssNumber) {
+      setImssInsuranceNum(v.imssNumber);
+      if (v.imssExpirationDate) setImssExpirationDate(v.imssExpirationDate);
+      if (v.suaPaymentProof) setSuaPaymentProof(v.suaPaymentProof);
+      if (v.dc3Certification) setDc3Certification(v.dc3Certification);
+      if (v.antidopingCertificate) setAntidopingCertificate(v.antidopingCertificate);
+      if (v.workPlanDescription) setWorkPlanDescription(v.workPlanDescription);
     }
 
     if (vis.supplierDetails) {
@@ -482,10 +513,22 @@ export const VisitorEditModal: React.FC<VisitorEditModalProps> = ({
         typeSpecificData.contractorDetails = {
           workOrderPo: workOrderPo.trim(),
           imssInsuranceNum: imssInsuranceNum.trim(),
+          imssExpirationDate: imssExpirationDate || undefined,
+          suaPaymentProof: suaPaymentProof.trim(),
+          dc3Certification: dc3Certification.trim(),
+          antidopingCertificate: antidopingCertificate.trim(),
+          workPlanDescription: workPlanDescription.trim(),
+          astPermitFolio: astPermitFolio.trim(),
           hasEpp,
           highRiskPermit,
           highRiskType: highRiskPermit ? highRiskType : ""
         };
+        typeSpecificData.imssNumber = imssInsuranceNum.trim();
+        typeSpecificData.imssExpirationDate = imssExpirationDate || undefined;
+        typeSpecificData.suaPaymentProof = suaPaymentProof.trim();
+        typeSpecificData.dc3Certification = dc3Certification.trim();
+        typeSpecificData.antidopingCertificate = antidopingCertificate.trim();
+        typeSpecificData.workPlanDescription = workPlanDescription.trim();
       } else if (accessType === "Proveedor") {
         typeSpecificData.supplierDetails = {
           invoiceOrWaybill: invoiceOrWaybill.trim(),
@@ -1006,6 +1049,71 @@ export const VisitorEditModal: React.FC<VisitorEditModalProps> = ({
                           value={imssInsuranceNum}
                           onChange={(e) => setImssInsuranceNum(e.target.value)}
                           className="w-full p-2 bg-white border border-slate-300 rounded-lg font-mono"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block font-bold text-slate-700 mb-1">Vigencia Pago IMSS Mensual</label>
+                        <input
+                          type="date"
+                          value={imssExpirationDate}
+                          onChange={(e) => setImssExpirationDate(e.target.value)}
+                          className="w-full p-2 bg-white border border-slate-300 rounded-lg"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block font-bold text-slate-700 mb-1">Folio Pago IMSS / SUA</label>
+                        <input
+                          type="text"
+                          placeholder="SUA-2026-08 / Folio Bancario"
+                          value={suaPaymentProof}
+                          onChange={(e) => setSuaPaymentProof(e.target.value)}
+                          className="w-full p-2 bg-white border border-slate-300 rounded-lg font-mono"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block font-bold text-slate-700 mb-1">Constancia Habilidades DC-3 (STPS)</label>
+                        <input
+                          type="text"
+                          placeholder="DC3-ALTURAS-2026 / DC3-MANTTO"
+                          value={dc3Certification}
+                          onChange={(e) => setDc3Certification(e.target.value)}
+                          className="w-full p-2 bg-white border border-slate-300 rounded-lg"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block font-bold text-slate-700 mb-1">Folio Certificado Antidoping</label>
+                        <input
+                          type="text"
+                          placeholder="LAB-ANTI-2026-NEG"
+                          value={antidopingCertificate}
+                          onChange={(e) => setAntidopingCertificate(e.target.value)}
+                          className="w-full p-2 bg-white border border-slate-300 rounded-lg font-mono"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block font-bold text-slate-700 mb-1">Folio Permiso AST por Cita</label>
+                        <input
+                          type="text"
+                          placeholder="AST-2026-01"
+                          value={astPermitFolio}
+                          onChange={(e) => setAstPermitFolio(e.target.value)}
+                          className="w-full p-2 bg-white border border-slate-300 rounded-lg font-mono"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block font-bold text-slate-700 mb-1">Plan de Trabajo / Actividad</label>
+                        <input
+                          type="text"
+                          placeholder="Mantenimiento en Subestación Eléctrica"
+                          value={workPlanDescription}
+                          onChange={(e) => setWorkPlanDescription(e.target.value)}
+                          className="w-full p-2 bg-white border border-slate-300 rounded-lg"
                         />
                       </div>
                     </div>

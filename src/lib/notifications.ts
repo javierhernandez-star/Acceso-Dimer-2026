@@ -11,17 +11,23 @@ export async function sendEmailViaAppsScriptWebhook(
   senderName?: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
+    const payload = JSON.stringify({
+      to,
+      subject,
+      htmlBody,
+      name: senderName || "No-Reply Control de Acceso"
+    });
+
+    // Google Apps Script Web Apps receive plain text payload or form-urlencoded reliably across domains
     await fetch(webhookUrl, {
       method: "POST",
       mode: "no-cors",
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify({
-        to,
-        subject,
-        htmlBody,
-        name: senderName || "No-Reply Control de Acceso"
-      })
+      headers: {
+        "Content-Type": "text/plain;charset=utf-8"
+      },
+      body: payload
     });
+
     return { success: true };
   } catch (err: any) {
     console.error("Error sending via Apps Script webhook:", err);

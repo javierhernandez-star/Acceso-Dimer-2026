@@ -1,6 +1,8 @@
 export type UserRole = 'ADMIN' | 'GUARD' | 'HOST' | 'VISITOR';
 
-export type AccessType = 'Visita General' | 'Proveedor' | 'Contratista' | 'Entrevista';
+export type AccessType = 'Visita General' | 'Proveedor' | 'Contratista' | 'Entrevista' | 'Transportista';
+
+export type ProfileCategory = 'GENERAL' | 'CANDIDATE' | 'SUPPLIER' | 'CONTRACTOR' | 'LOGISTICS';
 
 export type IdType = 'INE' | 'Licencia' | 'Pasaporte' | 'Gafete' | 'Otro';
 
@@ -13,9 +15,36 @@ export type VisitorStatus =
   | 'CHECKED_IN'
   | 'CHECKED_OUT';
 
+export interface ComplianceRecord {
+  version_doc: string;
+  fecha_aceptacion: string;
+  ip_usuario?: string;
+  fecha_expiracion_induccion: string;
+  regulationType?: string;
+  acceptedByEmail?: string;
+}
+
+export interface DocumentValidityStatus {
+  isValidOverall: boolean;
+  isComplianceValid: boolean;
+  complianceExpired: boolean;
+  isImssValid: boolean;
+  isNdaValid: boolean;
+  isInsuranceValid: boolean;
+  issues: string[];
+  warnings: string[];
+  missingPerVisitDocs: string[];
+}
+
 export interface ContractorDetails {
   workOrderPo?: string;
   imssInsuranceNum?: string;
+  imssExpirationDate?: string;
+  suaPaymentProof?: string;
+  dc3Certification?: string;
+  antidopingCertificate?: string;
+  workPlanDescription?: string;
+  astPermitFolio?: string;
   hasEpp?: boolean;
   highRiskPermit?: boolean;
   highRiskType?: string;
@@ -26,6 +55,19 @@ export interface SupplierDetails {
   cargoType?: string;
   trailerPlates?: string;
   materialsDescription?: string;
+  ndaSignedDate?: string;
+  ndaExpirationDate?: string;
+}
+
+export interface LogisticsDetails {
+  driverLicenseNumber?: string;
+  insurancePolicyNumber?: string;
+  insurancePolicyExpiration?: string;
+  waybillOrRemissionFolio?: string;
+  trailerPlates?: string;
+  cargoDescription?: string;
+  antidopingCertificate?: string;
+  suaPaymentProof?: string;
 }
 
 export interface InterviewDetails {
@@ -66,9 +108,23 @@ export interface VisitorProfile {
   bloodType?: string;
   allergies?: string;
   imssNumber?: string;
+  imssExpirationDate?: string;
+  suaPaymentProof?: string;
+  antidopingCertificate?: string;
+  workPlanDescription?: string;
+  ndaSignedDate?: string;
+  ndaExpirationDate?: string;
+  insurancePolicyNumber?: string;
+  insuranceExpirationDate?: string;
   dc3Certification?: string;
   eppItems?: string[];
   safetyInductionValidUntil?: string;
+  complianceRecord?: ComplianceRecord;
+  contractorDetails?: ContractorDetails;
+  supplierDetails?: SupplierDetails;
+  logisticsDetails?: LogisticsDetails;
+  interviewDetails?: InterviewDetails;
+  generalDetails?: GeneralDetails;
   authorizedZones?: string[];
   notes?: string;
   totalVisits?: number;
@@ -102,9 +158,18 @@ export interface Visitor {
   bloodType?: string;
   allergies?: string;
   imssNumber?: string;
+  imssExpirationDate?: string;
+  suaPaymentProof?: string;
+  antidopingCertificate?: string;
+  workPlanDescription?: string;
+  ndaSignedDate?: string;
+  ndaExpirationDate?: string;
+  insurancePolicyNumber?: string;
+  insuranceExpirationDate?: string;
   dc3Certification?: string;
   eppItems?: string[];
   safetyInductionValidUntil?: string;
+  complianceRecord?: ComplianceRecord;
   authorizedZones?: string[];
   healthDeclaration: boolean;
   healthNotes?: string;
@@ -136,6 +201,7 @@ export interface Visitor {
   supplierDetails?: SupplierDetails;
   interviewDetails?: InterviewDetails;
   generalDetails?: GeneralDetails;
+  logisticsDetails?: LogisticsDetails;
 }
 
 export interface Host {

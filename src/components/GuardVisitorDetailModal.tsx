@@ -1,6 +1,7 @@
 import React from "react";
 import { Visitor, Host } from "../types";
 import { formatSpanishDate, formatSpanishTime } from "../lib/utils";
+import { GuardComplianceAlertBanner } from "./GuardComplianceAlertBanner";
 import {
   X,
   User,
@@ -197,6 +198,9 @@ export const GuardVisitorDetailModal: React.FC<GuardVisitorDetailModalProps> = (
 
         {/* Scrollable Detailed Sections */}
         <div className="p-6 space-y-6 overflow-y-auto flex-1 text-xs text-slate-700">
+          {/* Document Expiry & Compliance Validity Alert */}
+          <GuardComplianceAlertBanner visitor={visitor} />
+
           {/* Grid: Visitor Info & Host Info */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Visitor Contact & ID Card */}
@@ -280,17 +284,53 @@ export const GuardVisitorDetailModal: React.FC<GuardVisitorDetailModalProps> = (
             <div className="bg-amber-50/60 border border-amber-200 p-4 rounded-2xl space-y-3">
               <h4 className="font-bold text-amber-950 text-xs flex items-center gap-2 border-b border-amber-200 pb-2">
                 <HardHat className="w-4 h-4 text-amber-600" />
-                <span>Requisitos de Seguridad Industrial (Contratista)</span>
+                <span>Requisitos de Seguridad Industrial (Contratista) & STPS</span>
               </h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="bg-white p-2.5 rounded-xl border border-amber-100">
-                  <p className="text-slate-500 text-[11px]">Orden de Trabajo / OT:</p>
-                  <p className="font-mono font-bold text-slate-900">{visitor.workOrder || "N/A"}</p>
+                  <p className="text-slate-500 text-[11px]">Orden de Trabajo / OT / PO:</p>
+                  <p className="font-mono font-bold text-slate-900">{visitor.contractorDetails?.workOrderPo || visitor.workOrder || "N/A"}</p>
                 </div>
                 <div className="bg-white p-2.5 rounded-xl border border-amber-100">
-                  <p className="text-slate-500 text-[11px]">Seguro Social / IMSS Vigente:</p>
-                  <p className="font-bold text-emerald-700">{visitor.imssNumber || "Validado / Registrado"}</p>
+                  <p className="text-slate-500 text-[11px]">Seguro Social / IMSS & Vigencia:</p>
+                  <p className="font-bold text-emerald-700">
+                    {visitor.contractorDetails?.imssInsuranceNum || visitor.imssNumber || "Validado"}
+                    {visitor.contractorDetails?.imssExpirationDate ? ` (Vence: ${visitor.contractorDetails.imssExpirationDate})` : ""}
+                  </p>
                 </div>
+                {(visitor.contractorDetails?.suaPaymentProof || visitor.suaPaymentProof) && (
+                  <div className="bg-white p-2.5 rounded-xl border border-amber-100">
+                    <p className="text-slate-500 text-[11px]">Folio Pago IMSS / SUA:</p>
+                    <p className="font-mono font-bold text-slate-900">{visitor.contractorDetails?.suaPaymentProof || visitor.suaPaymentProof}</p>
+                  </div>
+                )}
+                {(visitor.contractorDetails?.dc3Certification || visitor.dc3Certification) && (
+                  <div className="bg-white p-2.5 rounded-xl border border-amber-100">
+                    <p className="text-slate-500 text-[11px]">Constancia Habilidades DC-3 (STPS):</p>
+                    <p className="font-mono font-bold text-indigo-900">{visitor.contractorDetails?.dc3Certification || visitor.dc3Certification}</p>
+                  </div>
+                )}
+                {(visitor.contractorDetails?.antidopingCertificate || visitor.antidopingCertificate) && (
+                  <div className="bg-white p-2.5 rounded-xl border border-amber-100">
+                    <p className="text-slate-500 text-[11px]">Examen Antidoping Vigente:</p>
+                    <p className="font-mono font-bold text-emerald-800">{visitor.contractorDetails?.antidopingCertificate || visitor.antidopingCertificate}</p>
+                  </div>
+                )}
+                {(visitor.contractorDetails?.workPlanDescription || visitor.workPlanDescription) && (
+                  <div className="bg-white p-2.5 rounded-xl border border-amber-100">
+                    <p className="text-slate-500 text-[11px]">Plan de Trabajo / Actividad:</p>
+                    <p className="font-semibold text-slate-800">{visitor.contractorDetails?.workPlanDescription || visitor.workPlanDescription}</p>
+                  </div>
+                )}
+                {(visitor.contractorDetails?.astPermitFolio || visitor.contractorDetails?.highRiskPermit) && (
+                  <div className="bg-white p-2.5 rounded-xl border border-amber-100">
+                    <p className="text-slate-500 text-[11px]">Permiso AST / Alto Riesgo:</p>
+                    <p className="font-mono font-bold text-amber-900">
+                      {visitor.contractorDetails?.astPermitFolio || "Permiso Requerido"}
+                      {visitor.contractorDetails?.highRiskType ? ` - ${visitor.contractorDetails.highRiskType}` : ""}
+                    </p>
+                  </div>
+                )}
                 {visitor.safetyEquipment && (
                   <div className="sm:col-span-2 bg-white p-2.5 rounded-xl border border-amber-100">
                     <p className="text-slate-500 text-[11px]">Equipo de Protección Personal (EPP):</p>

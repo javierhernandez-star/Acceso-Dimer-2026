@@ -1139,6 +1139,59 @@ export async function forceSeedInitialData() {
   }
 }
 
+/**
+ * Limpia la base de datos para inicio en producción de la empresa:
+ * - CONSERVA el 100% de los Empleados / Anfitriones (hosts)
+ * - CONSERVA el 100% del Padrón de Visitantes frecuentes (visitor_profiles)
+ * - CONSERVA la Configuración del Sistema, NIPs y URL de Google Apps Script Webhook
+ * - Limpia las citas de prueba y bitácoras transitorias
+ */
+export async function cleanDatabaseKeepEmployeesAndVisitors(): Promise<{ success: boolean; message: string }> {
+  try {
+    // 1. Limpiar citas transitorias de prueba locales
+    saveLocalVisitors([]);
+    
+    // 2. Limpiar citas en Firestore
+    try {
+      const snap = await getDocs(collection(db, "visitors"));
+      const deletePromises = snap.docs.map((d) => deleteDoc(doc(db, "visitors", d.id)));
+      await Promise.all(deletePromises);
+    } catch (e) {
+      console.warn("Notice clearing Firestore visitors:", e);
+    }
+
+    // 3. Limpiar bitácora antigua de pruebas y dejar un log de inicio formal
+    saveLocalAuditLogs([]);
+    try {
+      const auditSnap = await getDocs(collection(db, "audit_logs"));
+      const auditDeletePromises = auditSnap.docs.map((d) => deleteDoc(doc(db, "audit_logs", d.id)));
+      await Promise.all(auditDeletePromises);
+    } catch (e) {
+      console.warn("Notice clearing Firestore audit_logs:", e);
+    }
+
+    // 4. Registrar log oficial de puesta en marcha
+    await addAuditLog(
+      "CONFIG_UPDATE",
+      undefined,
+      undefined,
+      "Administrador",
+      "Base de datos optimizada: Empleados y Padrón de Visitantes conservados. Sistema listo para operación de empresa."
+    );
+
+    return {
+      success: true,
+      message: "Base de datos preparada con éxito. Se han conservado todos los Empleados, Visitantes y la configuración de correo."
+    };
+  } catch (err: any) {
+    console.error("Error cleaning database:", err);
+    return {
+      success: false,
+      message: "Error al limpiar la base de datos: " + (err?.message || "Error desconocido")
+    };
+  }
+}
+
 // 1. VISITORS REAL-TIME SUBSCRIBER (Dual Persistence with Instant Cache)
 export function subscribeVisitors(onData: (visitors: Visitor[]) => void): Unsubscribe {
   // 1. Deliver local cached data immediately (instant UI loading, zero delay)
@@ -1755,6 +1808,7 @@ export function getAvailableBadgeNumber(
   if (accessType === "Contratista") prefix = "G-CON";
   else if (accessType === "Proveedor") prefix = "G-PRO";
   else if (accessType === "Entrevista") prefix = "G-ENT";
+  else if (accessType === "Transportista") prefix = "G-LOG";
 
   for (let i = 101; i <= 999; i++) {
     const candidate = `${prefix}-${i}`;
