@@ -360,6 +360,48 @@ export const GuardVisitorDetailModal: React.FC<GuardVisitorDetailModalProps> = (
             </div>
           )}
 
+          {visitor.accessType === "Transportista" && (
+            <div className="bg-teal-50/60 border border-teal-200 p-4 rounded-2xl space-y-3">
+              <h4 className="font-bold text-teal-950 text-xs flex items-center gap-2 border-b border-teal-200 pb-2">
+                <Truck className="w-4 h-4 text-teal-600" />
+                <span>Logística de Carga, Carta Porte y Patio</span>
+              </h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="bg-white p-2.5 rounded-xl border border-teal-100">
+                  <p className="text-slate-500 text-[11px]">Licencia Federal / Chofer:</p>
+                  <p className="font-mono font-bold text-slate-900">{visitor.logisticsDetails?.driverLicenseNumber || visitor.driverLicenseNumber || "N/A"}</p>
+                </div>
+                <div className="bg-white p-2.5 rounded-xl border border-teal-100">
+                  <p className="text-slate-500 text-[11px]">Folio Carta Porte / Remisión:</p>
+                  <p className="font-mono font-bold text-slate-900">{visitor.logisticsDetails?.waybillOrRemissionFolio || visitor.waybillOrRemissionFolio || "N/A"}</p>
+                </div>
+                <div className="bg-white p-2.5 rounded-xl border border-teal-100">
+                  <p className="text-slate-500 text-[11px]">Póliza de Seguro Vehicular:</p>
+                  <p className="font-bold text-slate-900">
+                    {visitor.logisticsDetails?.insurancePolicyNumber || visitor.insurancePolicyNumber || "Póliza Vigente"}
+                    {(visitor.logisticsDetails?.insurancePolicyExpiration || visitor.insuranceExpirationDate) ? ` (Vence: ${visitor.logisticsDetails?.insurancePolicyExpiration || visitor.insuranceExpirationDate})` : ""}
+                  </p>
+                </div>
+                <div className="bg-white p-2.5 rounded-xl border border-teal-100">
+                  <p className="text-slate-500 text-[11px]">Placas Remolque / Caja:</p>
+                  <p className="font-mono font-bold text-slate-900">{visitor.logisticsDetails?.trailerPlates || "N/A"}</p>
+                </div>
+                {(visitor.logisticsDetails?.antidopingCertificate || visitor.antidopingCertificate) && (
+                  <div className="bg-white p-2.5 rounded-xl border border-teal-100">
+                    <p className="text-slate-500 text-[11px]">Examen Toxicológico / Antidoping:</p>
+                    <p className="font-mono font-bold text-emerald-800">{visitor.logisticsDetails?.antidopingCertificate || visitor.antidopingCertificate}</p>
+                  </div>
+                )}
+                {(visitor.logisticsDetails?.cargoDescription || visitor.cargoType) && (
+                  <div className="sm:col-span-2 bg-white p-2.5 rounded-xl border border-teal-100">
+                    <p className="text-slate-500 text-[11px]">Descripción de Carga / Mercancía:</p>
+                    <p className="font-semibold text-slate-900">{visitor.logisticsDetails?.cargoDescription || visitor.cargoType}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {visitor.accessType === "Entrevista" && (
             <div className="bg-purple-50/60 border border-purple-200 p-4 rounded-2xl space-y-3">
               <h4 className="font-bold text-purple-950 text-xs flex items-center gap-2 border-b border-purple-200 pb-2">

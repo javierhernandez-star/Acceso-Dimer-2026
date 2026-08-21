@@ -166,6 +166,8 @@ export interface Visitor {
   ndaExpirationDate?: string;
   insurancePolicyNumber?: string;
   insuranceExpirationDate?: string;
+  driverLicenseNumber?: string;
+  waybillOrRemissionFolio?: string;
   dc3Certification?: string;
   eppItems?: string[];
   safetyInductionValidUntil?: string;

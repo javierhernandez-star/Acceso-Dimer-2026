@@ -38,10 +38,17 @@ export const VisitorEditModal: React.FC<VisitorEditModalProps> = ({
   // Basic Info
   const [fullName, setFullName] = useState(visitor?.fullName || "");
   const [company, setCompany] = useState(visitor?.company || "");
+  const [companyRfc, setCompanyRfc] = useState(visitor?.companyRfc || "");
   const [email, setEmail] = useState(visitor?.email || "");
   const [phone, setPhone] = useState(visitor?.phone || "");
   const [idType, setIdType] = useState<IdType>(visitor?.idType || "INE");
   const [idNumber, setIdNumber] = useState(visitor?.idNumber || "");
+
+  // Emergency & Medical Info
+  const [emergencyContactName, setEmergencyContactName] = useState(visitor?.emergencyContactName || "");
+  const [emergencyContactPhone, setEmergencyContactPhone] = useState(visitor?.emergencyContactPhone || "");
+  const [bloodType, setBloodType] = useState(visitor?.bloodType || "");
+  const [allergies, setAllergies] = useState(visitor?.allergies || "");
 
   // Access & Host Info
   const [accessType, setAccessType] = useState<AccessType>(visitor?.accessType || "Visita General");
@@ -55,6 +62,8 @@ export const VisitorEditModal: React.FC<VisitorEditModalProps> = ({
       : new Date(Date.now() + 3600000).toISOString().slice(0, 16)
   );
   const [vehiclePlates, setVehiclePlates] = useState(visitor?.vehiclePlates || "");
+  const [vehicleModel, setVehicleModel] = useState(visitor?.vehicleModel || "");
+  const [vehicleColor, setVehicleColor] = useState(visitor?.vehicleColor || "");
   const [equipmentRegistered, setEquipmentRegistered] = useState(visitor?.equipmentRegistered || "");
   const [status, setStatus] = useState<VisitorStatus>(visitor?.status || "PENDING");
   const [badgeNumber, setBadgeNumber] = useState(visitor?.badgeNumber || "");
@@ -78,8 +87,16 @@ export const VisitorEditModal: React.FC<VisitorEditModalProps> = ({
   // Proveedor
   const [invoiceOrWaybill, setInvoiceOrWaybill] = useState(visitor?.supplierDetails?.invoiceOrWaybill || "");
   const [cargoType, setCargoType] = useState(visitor?.supplierDetails?.cargoType || "Insumos de Producción");
-  const [trailerPlates, setTrailerPlates] = useState(visitor?.supplierDetails?.trailerPlates || "");
+  const [trailerPlates, setTrailerPlates] = useState(visitor?.supplierDetails?.trailerPlates || visitor?.logisticsDetails?.trailerPlates || "");
   const [materialsDescription, setMaterialsDescription] = useState(visitor?.supplierDetails?.materialsDescription || "");
+  const [ndaExpirationDate, setNdaExpirationDate] = useState(visitor?.supplierDetails?.ndaExpirationDate || visitor?.ndaExpirationDate || "");
+
+  // Transportista / Logística
+  const [driverLicenseNumber, setDriverLicenseNumber] = useState(visitor?.logisticsDetails?.driverLicenseNumber || "");
+  const [insurancePolicyNumber, setInsurancePolicyNumber] = useState(visitor?.logisticsDetails?.insurancePolicyNumber || visitor?.insurancePolicyNumber || "");
+  const [insuranceExpirationDate, setInsuranceExpirationDate] = useState(visitor?.logisticsDetails?.insurancePolicyExpiration || visitor?.insuranceExpirationDate || "");
+  const [waybillOrRemissionFolio, setWaybillOrRemissionFolio] = useState(visitor?.logisticsDetails?.waybillOrRemissionFolio || "");
+  const [cargoDescription, setCargoDescription] = useState(visitor?.logisticsDetails?.cargoDescription || "");
 
   // Entrevista
   const [jobPositionApplied, setJobPositionApplied] = useState(visitor?.interviewDetails?.jobPositionApplied || "");
@@ -117,10 +134,16 @@ export const VisitorEditModal: React.FC<VisitorEditModalProps> = ({
     if (visitor) {
       setFullName(visitor.fullName || "");
       setCompany(visitor.company || "");
+      setCompanyRfc(visitor.companyRfc || "");
       setEmail(visitor.email || "");
       setPhone(visitor.phone || "");
       setIdType(visitor.idType || "INE");
       setIdNumber(visitor.idNumber || "");
+      setEmergencyContactName(visitor.emergencyContactName || "");
+      setEmergencyContactPhone(visitor.emergencyContactPhone || "");
+      setBloodType(visitor.bloodType || "");
+      setAllergies(visitor.allergies || "");
+
       setAccessType(visitor.accessType || "Visita General");
       setSelectedHostId(visitor.hostId || (hosts[0]?.id || ""));
       setZone(visitor.zone || "Planta Principal");
@@ -130,6 +153,8 @@ export const VisitorEditModal: React.FC<VisitorEditModalProps> = ({
           : new Date(Date.now() + 3600000).toISOString().slice(0, 16)
       );
       setVehiclePlates(visitor.vehiclePlates || "");
+      setVehicleModel(visitor.vehicleModel || "");
+      setVehicleColor(visitor.vehicleColor || "");
       setEquipmentRegistered(visitor.equipmentRegistered || "");
       setStatus(visitor.status || "PENDING");
       setBadgeNumber(visitor.badgeNumber || "");
@@ -150,8 +175,15 @@ export const VisitorEditModal: React.FC<VisitorEditModalProps> = ({
 
       setInvoiceOrWaybill(visitor.supplierDetails?.invoiceOrWaybill || "");
       setCargoType(visitor.supplierDetails?.cargoType || "Insumos de Producción");
-      setTrailerPlates(visitor.supplierDetails?.trailerPlates || "");
+      setTrailerPlates(visitor.supplierDetails?.trailerPlates || visitor.logisticsDetails?.trailerPlates || "");
       setMaterialsDescription(visitor.supplierDetails?.materialsDescription || "");
+      setNdaExpirationDate(visitor.supplierDetails?.ndaExpirationDate || visitor.ndaExpirationDate || "");
+
+      setDriverLicenseNumber(visitor.logisticsDetails?.driverLicenseNumber || "");
+      setInsurancePolicyNumber(visitor.logisticsDetails?.insurancePolicyNumber || visitor.insurancePolicyNumber || "");
+      setInsuranceExpirationDate(visitor.logisticsDetails?.insurancePolicyExpiration || visitor.insuranceExpirationDate || "");
+      setWaybillOrRemissionFolio(visitor.logisticsDetails?.waybillOrRemissionFolio || "");
+      setCargoDescription(visitor.logisticsDetails?.cargoDescription || "");
 
       setJobPositionApplied(visitor.interviewDetails?.jobPositionApplied || "");
       setRecruiterName(visitor.interviewDetails?.recruiterName || "");
@@ -165,15 +197,23 @@ export const VisitorEditModal: React.FC<VisitorEditModalProps> = ({
     } else {
       setFullName("");
       setCompany("");
+      setCompanyRfc("");
       setEmail("");
       setPhone("");
       setIdType("INE");
       setIdNumber("");
+      setEmergencyContactName("");
+      setEmergencyContactPhone("");
+      setBloodType("");
+      setAllergies("");
+
       setAccessType("Visita General");
       setSelectedHostId(hosts[0]?.id || "");
       setZone("Planta Principal");
       setScheduledDateTime(new Date(Date.now() + 3600000).toISOString().slice(0, 16));
       setVehiclePlates("");
+      setVehicleModel("");
+      setVehicleColor("");
       setEquipmentRegistered("");
       setStatus("PENDING");
       setBadgeNumber("");
@@ -196,6 +236,13 @@ export const VisitorEditModal: React.FC<VisitorEditModalProps> = ({
       setCargoType("Insumos de Producción");
       setTrailerPlates("");
       setMaterialsDescription("");
+      setNdaExpirationDate("");
+
+      setDriverLicenseNumber("");
+      setInsurancePolicyNumber("");
+      setInsuranceExpirationDate("");
+      setWaybillOrRemissionFolio("");
+      setCargoDescription("");
 
       setJobPositionApplied("");
       setRecruiterName("");
@@ -360,11 +407,18 @@ export const VisitorEditModal: React.FC<VisitorEditModalProps> = ({
   const populateFromVisitor = (v: Visitor | VisitorProfile) => {
     setFullName(v.fullName || "");
     setCompany(v.company || "");
+    if (v.companyRfc) setCompanyRfc(v.companyRfc);
     setEmail(v.email || "");
     setPhone(v.phone || "");
     setIdType(v.idType || "INE");
     setIdNumber(v.idNumber || "");
     if (v.vehiclePlates) setVehiclePlates(v.vehiclePlates);
+    if (v.vehicleModel) setVehicleModel(v.vehicleModel);
+    if (v.vehicleColor) setVehicleColor(v.vehicleColor);
+    if (v.emergencyContactName) setEmergencyContactName(v.emergencyContactName);
+    if (v.emergencyContactPhone) setEmergencyContactPhone(v.emergencyContactPhone);
+    if (v.bloodType) setBloodType(v.bloodType);
+    if (v.allergies) setAllergies(v.allergies);
     if (v.accessType) setAccessType(v.accessType);
 
     const vis = v as Visitor;
@@ -396,6 +450,18 @@ export const VisitorEditModal: React.FC<VisitorEditModalProps> = ({
       if (vis.supplierDetails.cargoType) setCargoType(vis.supplierDetails.cargoType);
       if (vis.supplierDetails.trailerPlates) setTrailerPlates(vis.supplierDetails.trailerPlates);
       if (vis.supplierDetails.materialsDescription) setMaterialsDescription(vis.supplierDetails.materialsDescription);
+      if (vis.supplierDetails.ndaExpirationDate) setNdaExpirationDate(vis.supplierDetails.ndaExpirationDate);
+    }
+
+    if (vis.logisticsDetails) {
+      if (vis.logisticsDetails.driverLicenseNumber) setDriverLicenseNumber(vis.logisticsDetails.driverLicenseNumber);
+      if (vis.logisticsDetails.insurancePolicyNumber) setInsurancePolicyNumber(vis.logisticsDetails.insurancePolicyNumber);
+      if (vis.logisticsDetails.insurancePolicyExpiration) setInsuranceExpirationDate(vis.logisticsDetails.insurancePolicyExpiration);
+      if (vis.logisticsDetails.waybillOrRemissionFolio) setWaybillOrRemissionFolio(vis.logisticsDetails.waybillOrRemissionFolio);
+      if (vis.logisticsDetails.trailerPlates) setTrailerPlates(vis.logisticsDetails.trailerPlates);
+      if (vis.logisticsDetails.cargoDescription) setCargoDescription(vis.logisticsDetails.cargoDescription);
+      if (vis.logisticsDetails.antidopingCertificate) setAntidopingCertificate(vis.logisticsDetails.antidopingCertificate);
+      if (vis.logisticsDetails.suaPaymentProof) setSuaPaymentProof(vis.logisticsDetails.suaPaymentProof);
     }
 
     if (vis.interviewDetails) {
@@ -505,6 +571,13 @@ export const VisitorEditModal: React.FC<VisitorEditModalProps> = ({
       });
 
       const typeSpecificData: Partial<Visitor> = {
+        companyRfc: companyRfc.trim() || undefined,
+        emergencyContactName: emergencyContactName.trim() || undefined,
+        emergencyContactPhone: emergencyContactPhone.trim() || undefined,
+        bloodType: bloodType.trim() || undefined,
+        allergies: allergies.trim() || undefined,
+        vehicleModel: vehicleModel.trim() || undefined,
+        vehicleColor: vehicleColor.trim() || undefined,
         companionCount: Number(companionCount) || 0,
         companions: processedCompanions
       };
@@ -529,19 +602,42 @@ export const VisitorEditModal: React.FC<VisitorEditModalProps> = ({
         typeSpecificData.dc3Certification = dc3Certification.trim();
         typeSpecificData.antidopingCertificate = antidopingCertificate.trim();
         typeSpecificData.workPlanDescription = workPlanDescription.trim();
+        typeSpecificData.workOrder = workOrderPo.trim();
       } else if (accessType === "Proveedor") {
         typeSpecificData.supplierDetails = {
           invoiceOrWaybill: invoiceOrWaybill.trim(),
           cargoType: cargoType.trim(),
           trailerPlates: trailerPlates.trim().toUpperCase(),
-          materialsDescription: materialsDescription.trim()
+          materialsDescription: materialsDescription.trim(),
+          ndaExpirationDate: ndaExpirationDate || undefined
         };
+        typeSpecificData.purchaseOrder = invoiceOrWaybill.trim();
+        typeSpecificData.cargoType = cargoType.trim();
+        typeSpecificData.ndaExpirationDate = ndaExpirationDate || undefined;
+      } else if (accessType === "Transportista") {
+        typeSpecificData.logisticsDetails = {
+          driverLicenseNumber: driverLicenseNumber.trim(),
+          insurancePolicyNumber: insurancePolicyNumber.trim(),
+          insurancePolicyExpiration: insuranceExpirationDate || undefined,
+          waybillOrRemissionFolio: waybillOrRemissionFolio.trim(),
+          trailerPlates: trailerPlates.trim().toUpperCase(),
+          cargoDescription: cargoDescription.trim(),
+          antidopingCertificate: antidopingCertificate.trim(),
+          suaPaymentProof: suaPaymentProof.trim()
+        };
+        typeSpecificData.driverLicenseNumber = driverLicenseNumber.trim();
+        typeSpecificData.insurancePolicyNumber = insurancePolicyNumber.trim();
+        typeSpecificData.insuranceExpirationDate = insuranceExpirationDate || undefined;
+        typeSpecificData.cargoType = cargoDescription.trim();
+        typeSpecificData.antidopingCertificate = antidopingCertificate.trim();
+        typeSpecificData.suaPaymentProof = suaPaymentProof.trim();
       } else if (accessType === "Entrevista") {
         typeSpecificData.interviewDetails = {
           jobPositionApplied: jobPositionApplied.trim(),
           recruiterName: recruiterName.trim(),
           vacancyFolio: vacancyFolio.trim()
         };
+        typeSpecificData.interviewPosition = jobPositionApplied.trim();
       } else if (accessType === "Visita General") {
         typeSpecificData.generalDetails = {
           visitReason: visitReason.trim(),
@@ -943,6 +1039,17 @@ export const VisitorEditModal: React.FC<VisitorEditModalProps> = ({
                   </div>
 
                   <div>
+                    <label className="block font-bold text-slate-700 mb-1">RFC de la Empresa (Opcional)</label>
+                    <input
+                      type="text"
+                      placeholder="SIN010203ABC"
+                      value={companyRfc}
+                      onChange={(e) => setCompanyRfc(e.target.value.toUpperCase())}
+                      className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-600 font-mono"
+                    />
+                  </div>
+
+                  <div>
                     <label className="block font-bold text-slate-700 mb-1">Correo Electrónico *</label>
                     <input
                       type="email"
@@ -992,6 +1099,61 @@ export const VisitorEditModal: React.FC<VisitorEditModalProps> = ({
                     />
                   </div>
                 </div>
+
+                {/* Emergency & Health subsection */}
+                <div className="pt-2 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs">
+                  <div>
+                    <label className="block font-bold text-slate-600 mb-1">Contacto de Emergencia</label>
+                    <input
+                      type="text"
+                      placeholder="Nombre de Familiar / Contacto"
+                      value={emergencyContactName}
+                      onChange={(e) => setEmergencyContactName(e.target.value)}
+                      className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-600 mb-1">Teléfono de Emergencia</label>
+                    <input
+                      type="tel"
+                      placeholder="55 9876 5432"
+                      value={emergencyContactPhone}
+                      onChange={(e) => setEmergencyContactPhone(e.target.value)}
+                      className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-600 mb-1">Tipo de Sangre</label>
+                    <select
+                      value={bloodType}
+                      onChange={(e) => setBloodType(e.target.value)}
+                      className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg"
+                    >
+                      <option value="">No especificado</option>
+                      <option value="O+">O+</option>
+                      <option value="O-">O-</option>
+                      <option value="A+">A+</option>
+                      <option value="A-">A-</option>
+                      <option value="B+">B+</option>
+                      <option value="B-">B-</option>
+                      <option value="AB+">AB+</option>
+                      <option value="AB-">AB-</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-600 mb-1">Alergias o Padecimientos</label>
+                    <input
+                      type="text"
+                      placeholder="Penicilina, Asma, Ninguna..."
+                      value={allergies}
+                      onChange={(e) => setAllergies(e.target.value)}
+                      className="w-full p-2 bg-slate-50 border border-slate-200 rounded-lg"
+                    />
+                  </div>
+                </div>
               </div>
 
               {/* Section 2: Tipo de Acceso & Requisitos Dinámicos */}
@@ -1016,7 +1178,8 @@ export const VisitorEditModal: React.FC<VisitorEditModalProps> = ({
                   >
                     <option value="Visita General">Visita General / Junta Comercial / Auditoría</option>
                     <option value="Contratista">Contratista / Mantenimiento / Obra</option>
-                    <option value="Proveedor">Proveedor / Chofer / Entrega de Material</option>
+                    <option value="Proveedor">Proveedor / Entrega de Insumos / Facturación</option>
+                    <option value="Transportista">Transportista / Logística de Carga / Patio</option>
                     <option value="Entrevista">Entrevista de Trabajo / Recursos Humanos</option>
                   </select>
                 </div>
@@ -1026,7 +1189,7 @@ export const VisitorEditModal: React.FC<VisitorEditModalProps> = ({
                   <div className="p-4 bg-amber-50/70 border border-amber-200 rounded-xl space-y-3 text-xs">
                     <div className="flex items-center space-x-2 text-amber-900 font-bold">
                       <HardHat className="w-4 h-4 text-amber-700" />
-                      <span>Requisitos de Seguridad Industrial (Contratistas)</span>
+                      <span>Requisitos de Seguridad Industrial (Contratistas) & STPS</span>
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -1063,7 +1226,7 @@ export const VisitorEditModal: React.FC<VisitorEditModalProps> = ({
                       </div>
 
                       <div>
-                        <label className="block font-bold text-slate-700 mb-1">Folio Pago IMSS / SUA</label>
+                        <label className="block font-bold text-slate-700 mb-1">Folio Comprobante Pago SUA / IMSS</label>
                         <input
                           type="text"
                           placeholder="SUA-2026-08 / Folio Bancario"
@@ -1085,7 +1248,7 @@ export const VisitorEditModal: React.FC<VisitorEditModalProps> = ({
                       </div>
 
                       <div>
-                        <label className="block font-bold text-slate-700 mb-1">Folio Certificado Antidoping</label>
+                        <label className="block font-bold text-slate-700 mb-1">Folio Certificado Antidoping Vigente</label>
                         <input
                           type="text"
                           placeholder="LAB-ANTI-2026-NEG"
@@ -1210,12 +1373,110 @@ export const VisitorEditModal: React.FC<VisitorEditModalProps> = ({
                       </div>
 
                       <div>
-                        <label className="block font-bold text-slate-700 mb-1">Descripción de Materiales</label>
+                        <label className="block font-bold text-slate-700 mb-1">Vigencia de Acuerdo de Confidencialidad NDA</label>
+                        <input
+                          type="date"
+                          value={ndaExpirationDate}
+                          onChange={(e) => setNdaExpirationDate(e.target.value)}
+                          className="w-full p-2 bg-white border border-slate-300 rounded-lg"
+                        />
+                      </div>
+
+                      <div className="sm:col-span-2">
+                        <label className="block font-bold text-slate-700 mb-1">Descripción Detallada de Materiales</label>
                         <input
                           type="text"
-                          placeholder="Ej. 2 tarimas con bobinas de empaque"
+                          placeholder="Ej. 2 tarimas con bobinas de empaque, 5 cajas de tornillería"
                           value={materialsDescription}
                           onChange={(e) => setMaterialsDescription(e.target.value)}
+                          className="w-full p-2 bg-white border border-slate-300 rounded-lg"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Sub-form: Transportista / Logística */}
+                {accessType === "Transportista" && (
+                  <div className="p-4 bg-teal-50/80 border border-teal-200 rounded-xl space-y-3 text-xs">
+                    <div className="flex items-center space-x-2 text-teal-900 font-bold">
+                      <Truck className="w-4 h-4 text-teal-700" />
+                      <span>Logística de Transporte de Carga, Carta Porte y Patio</span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block font-bold text-slate-700 mb-1">Licencia de Conducir Federal / Transporte *</label>
+                        <input
+                          type="text"
+                          placeholder="Ej. LIC-FED-987654"
+                          value={driverLicenseNumber}
+                          onChange={(e) => setDriverLicenseNumber(e.target.value)}
+                          className="w-full p-2 bg-white border border-slate-300 rounded-lg font-mono uppercase"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block font-bold text-slate-700 mb-1">Folio de Carta Porte / Remisión *</label>
+                        <input
+                          type="text"
+                          placeholder="CP-2026-XXXXX"
+                          value={waybillOrRemissionFolio}
+                          onChange={(e) => setWaybillOrRemissionFolio(e.target.value)}
+                          className="w-full p-2 bg-white border border-slate-300 rounded-lg font-mono uppercase"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block font-bold text-slate-700 mb-1">No. Póliza de Seguro Vehicular de Carga</label>
+                        <input
+                          type="text"
+                          placeholder="POL-QUALITAS-8899"
+                          value={insurancePolicyNumber}
+                          onChange={(e) => setInsurancePolicyNumber(e.target.value)}
+                          className="w-full p-2 bg-white border border-slate-300 rounded-lg font-mono uppercase"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block font-bold text-slate-700 mb-1">Vigencia de Póliza de Seguro</label>
+                        <input
+                          type="date"
+                          value={insuranceExpirationDate}
+                          onChange={(e) => setInsuranceExpirationDate(e.target.value)}
+                          className="w-full p-2 bg-white border border-slate-300 rounded-lg"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block font-bold text-slate-700 mb-1">Placas del Remolque / Caja Seca o Refrigerada</label>
+                        <input
+                          type="text"
+                          placeholder="Ej. TC-5544-B"
+                          value={trailerPlates}
+                          onChange={(e) => setTrailerPlates(e.target.value)}
+                          className="w-full p-2 bg-white border border-slate-300 rounded-lg font-mono uppercase"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block font-bold text-slate-700 mb-1">Folio Examen Antidoping / Toxicológico</label>
+                        <input
+                          type="text"
+                          placeholder="ANTI-TOX-2026"
+                          value={antidopingCertificate}
+                          onChange={(e) => setAntidopingCertificate(e.target.value)}
+                          className="w-full p-2 bg-white border border-slate-300 rounded-lg font-mono"
+                        />
+                      </div>
+
+                      <div className="sm:col-span-2">
+                        <label className="block font-bold text-slate-700 mb-1">Descripción de la Carga / Mercancía Transportada</label>
+                        <input
+                          type="text"
+                          placeholder="Ej. Carga de bobinas de acero, 24 toneladas, destino andén 4"
+                          value={cargoDescription}
+                          onChange={(e) => setCargoDescription(e.target.value)}
                           className="w-full p-2 bg-white border border-slate-300 rounded-lg"
                         />
                       </div>
@@ -1438,15 +1699,37 @@ export const VisitorEditModal: React.FC<VisitorEditModalProps> = ({
                     />
                   </div>
 
-                  <div>
-                    <label className="block font-bold text-slate-700 mb-1">Placas de Vehículo (Si aplica)</label>
-                    <input
-                      type="text"
-                      placeholder="Ej. ABC-123-D"
-                      value={vehiclePlates}
-                      onChange={(e) => setVehiclePlates(e.target.value)}
-                      className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg font-mono uppercase"
-                    />
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">Placas de Vehículo</label>
+                      <input
+                        type="text"
+                        placeholder="Ej. ABC-123-D"
+                        value={vehiclePlates}
+                        onChange={(e) => setVehiclePlates(e.target.value)}
+                        className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg font-mono uppercase"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">Modelo / Marca</label>
+                      <input
+                        type="text"
+                        placeholder="Ej. Nissan Versa"
+                        value={vehicleModel}
+                        onChange={(e) => setVehicleModel(e.target.value)}
+                        className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">Color de Auto</label>
+                      <input
+                        type="text"
+                        placeholder="Ej. Blanco / Plata"
+                        value={vehicleColor}
+                        onChange={(e) => setVehicleColor(e.target.value)}
+                        className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg"
+                      />
+                    </div>
                   </div>
 
                   <div className="sm:col-span-2">
