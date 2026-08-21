@@ -46,7 +46,12 @@ import {
   CheckCircle2,
   Mail,
   Send,
-  Sparkles
+  Sparkles,
+  Copy,
+  ExternalLink,
+  Code2,
+  HelpCircle,
+  Zap
 } from "lucide-react";
 
 interface AdminPanelProps {
@@ -90,6 +95,16 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ hosts, auditLogs, config
   const [noReplySenderNameForm, setNoReplySenderNameForm] = useState(config.noReplySenderName || "No-Reply Control de Acceso");
   const [appsScriptWebhookUrlForm, setAppsScriptWebhookUrlForm] = useState(config.appsScriptWebhookUrl || "");
   const [pinSuccessMsg, setPinSuccessMsg] = useState(false);
+  const [showAppsScriptGuide, setShowAppsScriptGuide] = useState(false);
+  const [copiedCode, setCopiedCode] = useState(false);
+
+  useEffect(() => {
+    setGuardPinForm(config.guardPin);
+    setAdminPinForm(config.adminPin);
+    setNoReplyEmailForm(config.noReplyEmail || "no-reply@dimer.com.mx");
+    setNoReplySenderNameForm(config.noReplySenderName || "No-Reply Control de Acceso");
+    setAppsScriptWebhookUrlForm(config.appsScriptWebhookUrl || "");
+  }, [config]);
 
   // Gmail No-Reply Auth State
   const [gmailUser, setGmailUser] = useState(getGmailUser());
@@ -823,9 +838,20 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ hosts, auditLogs, config
                 </div>
 
                 <div className="pt-2 border-t border-slate-200">
-                  <label className="block font-semibold text-slate-700 mb-1 flex items-center justify-between">
-                    <span>URL de Webhook Google Apps Script (Opcional - Idéntico a AutoCrat)</span>
-                  </label>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="font-semibold text-slate-700 flex items-center gap-1.5">
+                      <Zap className="w-3.5 h-3.5 text-amber-500" />
+                      <span>URL de Webhook Google Apps Script (Recomendado Multi-Dispositivo)</span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setShowAppsScriptGuide(!showAppsScriptGuide)}
+                      className="text-[11px] font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1 hover:underline"
+                    >
+                      <Code2 className="w-3 h-3" />
+                      <span>{showAppsScriptGuide ? "Ocultar Código" : "Ver Código y Guía"}</span>
+                    </button>
+                  </div>
                   <input
                     type="url"
                     value={appsScriptWebhookUrlForm}
@@ -834,8 +860,89 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ hosts, auditLogs, config
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono text-slate-900 outline-none focus:ring-2 focus:ring-blue-600"
                   />
                   <p className="text-[10px] text-slate-500 mt-1 leading-relaxed">
-                    Si cuenta con un Webhook de Google Apps Script con <code className="bg-slate-200 px-1 py-0.5 rounded text-slate-800 font-mono">MailApp.sendEmail({"{noReply: true}"})</code>, el sistema despachará los correos por ahí de forma 100% nativa.
+                    Permite que <strong>cualquier persona</strong> (visitantes desde su celular, guardias en caseta y anfitriones) envíe correos reales 24/7 sin pedir inicio de sesión individual.
                   </p>
+
+                  {showAppsScriptGuide && (
+                    <div className="mt-3 p-3.5 bg-slate-900 text-slate-200 rounded-xl border border-slate-700 text-xs space-y-2.5 animate-fadeIn">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-emerald-400 flex items-center gap-1.5">
+                          <Code2 className="w-4 h-4" />
+                          <span>Código para Google Apps Script (script.google.com):</span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const scriptCode = `function doPost(e) {
+  try {
+    var data = JSON.parse(e.postData.contents);
+    var to = data.to;
+    var subject = data.subject;
+    var htmlBody = data.htmlBody;
+    var name = data.name || "No-Reply Control de Acceso";
+
+    MailApp.sendEmail({
+      to: to,
+      subject: subject,
+      htmlBody: htmlBody,
+      name: name,
+      noReply: true
+    });
+
+    return ContentService.createTextOutput(JSON.stringify({ status: "success" }))
+      .setMimeType(ContentService.MimeType.JSON);
+  } catch (error) {
+    return ContentService.createTextOutput(JSON.stringify({ status: "error", message: error.toString() }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+}`;
+                            navigator.clipboard.writeText(scriptCode);
+                            setCopiedCode(true);
+                            setTimeout(() => setCopiedCode(false), 3000);
+                          }}
+                          className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-[11px] font-bold flex items-center gap-1 transition-colors"
+                        >
+                          {copiedCode ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                          <span>{copiedCode ? "¡Copiado!" : "Copiar Código"}</span>
+                        </button>
+                      </div>
+
+                      <pre className="bg-slate-950 p-2.5 rounded-lg font-mono text-[11px] text-slate-300 overflow-x-auto leading-relaxed border border-slate-800">
+{`function doPost(e) {
+  try {
+    var data = JSON.parse(e.postData.contents);
+    var to = data.to;
+    var subject = data.subject;
+    var htmlBody = data.htmlBody;
+    var name = data.name || "No-Reply Control de Acceso";
+
+    MailApp.sendEmail({
+      to: to,
+      subject: subject,
+      htmlBody: htmlBody,
+      name: name,
+      noReply: true
+    });
+
+    return ContentService.createTextOutput(JSON.stringify({ status: "success" }))
+      .setMimeType(ContentService.MimeType.JSON);
+  } catch (error) {
+    return ContentService.createTextOutput(JSON.stringify({ status: "error", message: error.toString() }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+}`}
+                      </pre>
+
+                      <div className="text-[11px] text-slate-300 space-y-1 bg-slate-800/80 p-2.5 rounded-lg">
+                        <p className="font-bold text-amber-300">Pasos de instalación (1 minuto):</p>
+                        <p>1. Entra a <a href="https://script.google.com" target="_blank" rel="noreferrer" className="text-blue-400 underline font-semibold">script.google.com</a> con tu cuenta Google.</p>
+                        <p>2. Crea un <strong>Nuevo proyecto</strong> y pega el código anterior.</p>
+                        <p>3. Arriba a la derecha haz clic en <strong>Implementar</strong> ➔ <strong>Nueva implementación</strong>.</p>
+                        <p>4. En tipo selecciona <strong>Aplicación web</strong>, en "Ejecutar como" selecciona <strong>Yo</strong> y en "Quién tiene acceso" selecciona <strong>Cualquier persona (Anyone)</strong>.</p>
+                        <p>5. Copia la URL terminada en <code className="bg-slate-900 px-1 py-0.5 rounded text-amber-300 font-mono">/exec</code> y pégala en el campo de arriba.</p>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {pinSuccessMsg && (

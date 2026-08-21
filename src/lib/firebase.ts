@@ -670,7 +670,8 @@ const DEFAULT_CONFIG: AppConfig = {
   adminPin: "1990",
   companyName: "Planta Industrial Dimer - Control de Acceso",
   noReplyEmail: "no-reply@dimer.com.mx",
-  noReplySenderName: "No-Reply Control de Acceso"
+  noReplySenderName: "No-Reply Control de Acceso",
+  appsScriptWebhookUrl: "https://script.google.com/macros/s/AKfycbymKSwxaPjLNlOimUQq_2bmfSOVl3QmC0IvJyOT9JhZQ_hinkkzhxw3pIvlf7v1FkHh/exec"
 };
 
 // Robust Local Storage Cache Keys
@@ -1103,6 +1104,11 @@ export async function seedInitialDataIfEmpty() {
     const configDoc = await getDoc(doc(db, "app_config", "settings"));
     if (!configDoc.exists()) {
       await setDoc(doc(db, "app_config", "settings"), sanitizeForFirestore(DEFAULT_CONFIG));
+    } else {
+      const data = configDoc.data() || {};
+      if (!data.appsScriptWebhookUrl) {
+        await setDoc(doc(db, "app_config", "settings"), { appsScriptWebhookUrl: DEFAULT_CONFIG.appsScriptWebhookUrl }, { merge: true });
+      }
     }
   } catch (err) {
     console.warn("Notice during seedInitialDataIfEmpty:", err);
@@ -1829,12 +1835,15 @@ export async function deleteHost(id: string, name: string): Promise<void> {
 }
 
 export async function updateAppConfig(config: AppConfig): Promise<void> {
-  saveLocalConfig(config);
+  cachedAppConfig = { ...cachedAppConfig, ...config };
+  saveLocalConfig(cachedAppConfig);
   const sanitized = sanitizeForFirestore(config);
-  setDoc(doc(db, "app_config", "settings"), sanitized).catch((err) => {
-    console.warn("Firestore updateAppConfig background write warning:", err);
-  });
-  addAuditLog("CONFIG_UPDATE", undefined, undefined, "Administrador", "Actualizada configuración de PINs de acceso").catch(() => {});
+  try {
+    await setDoc(doc(db, "app_config", "settings"), sanitized, { merge: true });
+  } catch (err) {
+    console.warn("Firestore updateAppConfig write warning:", err);
+  }
+  addAuditLog("CONFIG_UPDATE", undefined, undefined, "Administrador", "Actualizada configuración y correo de notificaciones").catch(() => {});
 }
 
 export async function addAuditLog(
